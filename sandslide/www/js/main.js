@@ -175,7 +175,7 @@
       var s = app.game.s;
       var onlyDown = app.tutorial && app.tutorial.step === 3;
       var info = arrowInfo();
-      R.drawArrows({ info: info, stored: s.stored, armed: armedDir, pulse: pulseDirs, visible: !app.tutorial || app.tutorial.step === 3, only: onlyDown ? 'down' : null });
+      R.drawArrows({ info: info, stored: s.stored, armed: armedDir, pulse: pulseDirs, showFits: !!s.needsTilt, visible: !app.tutorial || app.tutorial.step === 3, only: onlyDown ? 'down' : null });
       UI.drawHUD(app);
       R.drawTray(trayModel());
       if (sc === 'play') { UI.drawChip(app); UI.drawBottomBar(app); }

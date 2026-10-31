@@ -219,7 +219,7 @@
       arrowPath(cx, cy, d, size); ctx.fill();
       ctx.globalAlpha = 1;
       if (hasTilt && inf) {
-        var label = inf.lines > 0 ? String(inf.lines) : (inf.fits ? '✓' : '');
+        var label = inf.lines > 0 ? (inf.fits && arrows.showFits ? inf.lines + '✓' : String(inf.lines)) : (inf.fits ? '✓' : '');
         if (label) {
           var px, py;
           if (d === 'up' || d === 'down') { px = cx + 26; py = cy; } else { px = cx; py = cy + 28; }
