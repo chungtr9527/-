@@ -1,0 +1,102 @@
+name: sandslide-android-release
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sandslide
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      # A tag must be vMAJOR.MINOR.PATCH with MINOR and PATCH of at most two digits, so that
+      # versionCode = MAJOR*10000 + MINOR*100 + PATCH never collides. Only a manual run on a branch is a dry run.
+      - name: Validate tag
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+              echo "::error::tag '$GITHUB_REF_NAME' is not a release tag (expected vMAJOR.MINOR.PATCH with MINOR and PATCH of at most two digits)"; exit 1
+            fi
+            V="${GITHUB_REF_NAME#v}"; IFS=. read -r MA MI PA <<< "$V"
+            CODE=$((10#$MA*10000 + 10#$MI*100 + 10#$PA))
+            if [[ "$CODE" -eq 0 ]]; then echo "::error::version code for '$GITHUB_REF_NAME' is 0; the first release tag must be at least v0.0.1"; exit 1; fi
+            echo "APP_VERSION=$V" >> "$GITHUB_ENV"; echo "APP_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+            echo "release $V (version code $CODE)"
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "APP_VERSION=0.0.0-$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"; echo "APP_VERSION_CODE=1" >> "$GITHUB_ENV"
+            echo "::warning::not a release tag; building an unsigned dry run"
+          else
+            echo "::error::refusing to build '$GITHUB_REF' for event '$GITHUB_EVENT_NAME' (push a vMAJOR.MINOR.PATCH tag or run the workflow manually)"; exit 1
+          fi
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: sandslide/package-lock.json
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm test
+      - name: Switch to production build flags
+        run: npm run flags:release
+      - name: Gate - no test ids or placeholders in the web build or strings
+        run: |
+          if grep -rl '3940256099942544' www/js; then echo "::error::Google test ad ids found in www/js after flags:release"; exit 1; fi
+          node -e "
+            require('./www/js/build-flags.js'); require('./www/js/ads-ids.prod.js');
+            const TB = globalThis.TB; if (TB.flags.env !== 'prod') { console.error('build flags are not prod'); process.exit(1); }
+            const a = TB.ADS_IDS_PROD.android; for (const k of ['banner','interstitial','rwRescue','rwTilt']) { if (!a[k] || /REPLACE/.test(a[k])) { console.error('ads-ids.prod.js android.' + k + ' is a placeholder'); process.exit(1); } }
+            const xml = require('fs').readFileSync('android/app/src/main/res/values/strings.xml', 'utf8');
+            const m = xml.match(/name=\"admob_app_id\">([^<]+)</); if (!m || /REPLACE/.test(m[1])) { console.error('strings.xml admob_app_id is a placeholder'); process.exit(1); }
+            console.log('release id gate passed');
+          "
+      - run: npx cap sync android
+      - name: Decode upload keystore
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/upload.jks
+      - name: Build release AAB + APK
+        env:
+          KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && format('{0}/sandslide/android/app/upload.jks', github.workspace) || '' }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew bundleRelease assembleRelease --no-daemon --stacktrace -PappVersionName="$APP_VERSION" -PappVersionCode="$APP_VERSION_CODE"
+      - name: Gate - web assets inside the bundle, no test ids, no native libraries (16 KB page-size compliance)
+        run: |
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          unzip -l "$AAB" | grep -q ' base/assets/public/js/ads.js$' || { echo "::error::web assets missing from the bundle (base/assets/public/js/ads.js not found); did cap sync run?"; exit 1; }
+          if unzip -p "$AAB" 'base/assets/public/js/*.js' | grep -c 3940256099942544 | grep -qv '^0$'; then echo "::error::test ad ids inside the bundle"; exit 1; fi
+          if unzip -l "$AAB" | grep -E 'lib/.*\.so$'; then echo "::error::native libraries found; verify 16 KB alignment"; exit 1; fi
+          echo "bundle gates passed"
+      - name: Collect outputs
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/bundle/release/app-release.aab out/sandslide-$APP_VERSION.aab
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1); cp "$APK" out/sandslide-$APP_VERSION.apk
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then for f in out/*; do mv "$f" "${f%.*}-unsigned.${f##*.}"; done; fi
+          ls -la out
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sandslide-release-${{ env.APP_VERSION }}
+          path: sandslide/out/*
+      # Idempotent: a re-run of the same tag replaces the assets on the existing release instead of failing.
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" out/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" out/* --generate-notes --title "Sandslide $APP_VERSION"
+          fi

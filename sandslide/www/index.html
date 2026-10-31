@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0F1233">
+  <meta name="description" content="Sandslide (流沙方塊): tilt the board and every block slides like sand. Fair, offline, no timer.">
+  <title>Sandslide 流沙方塊</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <canvas id="game" aria-hidden="true"></canvas>
+  <div id="a11y" class="a11y"><div id="a11y-live" aria-live="polite"></div><div id="a11y-buttons"></div></div>
+  <div id="overlay" class="overlay" hidden></div>
+
+  <!-- 1. build flags + ids + config (pure data) -->
+  <script src="js/build-flags.js"></script>
+  <script src="js/ads-ids.prod.js"></script>
+  <script src="js/ads-ids.test.js"></script>
+  <script src="js/config.js"></script>
+  <!-- 2. pure engine (Node-testable: no window/document/navigator/Date/Math.random) -->
+  <script src="js/i18n.js"></script>
+  <script src="js/rng.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/pieces.js"></script>
+  <script src="js/tilt.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/daily.js"></script>
+  <script src="js/game.js"></script>
+  <!-- 3. platform integration -->
+  <script src="js/platform.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/haptics.js"></script>
+  <script src="js/ads.js"></script>
+  <script src="js/share.js"></script>
+  <!-- 4. presentation -->
+  <script src="js/tween.js"></script>
+  <script src="js/particles.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/input.js"></script>
+  <!-- 5. bootstrap -->
+  <script src="js/main.js"></script>
+</body>
+</html>
