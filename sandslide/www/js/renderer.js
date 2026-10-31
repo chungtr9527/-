@@ -6,7 +6,7 @@
   var A = Config.ANIM, N = 8;
   var canvas = null, ctx = null, palette = Config.PALETTE, paletteIndex = 0;
   var spriteCache = {}, bgCache = null, bgKey = '';
-  var fontStack = (TB.I18N && TB.I18N.fontStack) || 'system-ui, "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  var fontStack = g.__FONT_STACK || (TB.I18N && TB.I18N.fontStack) || 'system-ui, "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
   var reduced = false, quality = 1;
 
   // ---------- FX state (read by draw functions, written by the script player) ----------

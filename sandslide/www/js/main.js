@@ -569,7 +569,8 @@
   function installDebugApi() {
     g.__TB = { app: app, layout: Layout, game: function () { return app.game; }, state: function () { return app.game ? app.game.serialize() : null; }, screen: function () { return app.screen; },
       startGame: startGame, place: doPlace, tilt: doTilt, button: onButton, hand: function () { return app.game ? app.game.s.hand.slice() : null; }, fx: FX, instant: function (v) { app.instantFx = !!v; },
-      showMenu: showMenu, startTutorial: startTutorial, finishTutorial: finishTutorial, toast: toast, busy: function () { return FX.locked || Input.isBusy() || Tween.count() > 0; } };
+      showMenu: showMenu, startTutorial: startTutorial, finishTutorial: finishTutorial, toast: toast, busy: function () { return FX.locked || Input.isBusy() || Tween.count() > 0; },
+      refresh: function () { boardVersion++; arrowCache.v = -1; if (app.game) { app.game._updateStuck(); if (!app.game.isOver()) { refreshStuck(); updateChip(); } } requestFrame(); }, banner: function (txt) { R.banner(txt); requestFrame(); } };
   }
 
   if (g.document && g.document.readyState !== 'loading') boot(); else g.document.addEventListener('DOMContentLoaded', boot);

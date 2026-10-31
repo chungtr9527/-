@@ -6,7 +6,7 @@ const path = require('path');
 const root = path.resolve(process.argv[2] || 'www');
 const port = Number(process.argv[3] || 4173);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon' };
+  '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff' };
 http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
   if (p.endsWith('/')) p += 'index.html';
@@ -14,7 +14,7 @@ http.createServer((req, res) => {
   if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('not found'); }
-    res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
+    res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store', 'access-control-allow-origin': '*' });
     res.end(data);
   });
 }).listen(port, '127.0.0.1', () => console.log(`serving ${root} at http://127.0.0.1:${port}/`));

@@ -28,7 +28,7 @@ const DENSITIES = { ldpi: 81, mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxx
 const LAYERS = { 'icon-foreground': 'ic_launcher_foreground.png', 'icon-background': 'ic_launcher_background.png' };
 const ADAPTIVE_ICON_XML = [
   '<?xml version="1.0" encoding="utf-8"?>',
-  '<!-- Written by "node scripts/export-icons.js --android" after "npx @capacitor/assets generate": that tool wraps both layers',
+  '<!-- Written by "node scripts/export-icons.js  - android" after "npx @capacitor/assets generate": that tool wraps both layers',
   '     in a 16.7% inset, which leaves the bleed zone transparent and shrinks a foreground that already respects the safe zone. -->',
   '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">',
   '    <background android:drawable="@mipmap/ic_launcher_background" />',
