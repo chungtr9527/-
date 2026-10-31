@@ -1,0 +1,31 @@
+{
+  "name": "sandslide",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sandslide (流沙方塊) — a block puzzle where you tilt the board and every block slides like sand.",
+  "scripts": {
+    "serve": "node scripts/static-server.js www 4173",
+    "test": "node --test \"test/unit/**/*.test.js\"",
+    "sim": "node scripts/sim.js",
+    "e2e": "npm run flags:dev && node --test \"test/e2e/**/*.test.js\"",
+    "flags:dev": "node scripts/apply-build-flags.js dev",
+    "flags:release": "node scripts/apply-build-flags.js release",
+    "sync": "cap sync android",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/preferences": "8.0.1",
+    "@capacitor/share": "8.0.3",
+    "@capacitor-community/admob": "8.3.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "4.0.0",
+    "@capacitor/cli": "8.6.0",
+    "playwright": "1.63.0"
+  }
+}
