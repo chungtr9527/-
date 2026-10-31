@@ -8,7 +8,7 @@ test('date keys, numbering and shifting', () => {
   assert.equal(D.dateKey({ y: 2026, m: 11, d: 1 }), '2026-11-01');
   assert.equal(D.dateKey(new Date(2026, 0, 5)), '2026-01-05');
   assert.equal(D.numberFor(D.EPOCH), 1);
-  assert.equal(D.numberFor('2026-11-30'), 30);
+  assert.equal(D.numberFor('2026-11-30'), 31);
   assert.equal(D.shiftKey('2026-12-31', 1), '2027-01-01');
   assert.equal(D.shiftKey('2027-03-01', -1), '2027-02-28');
   assert.equal(D.seedFor('2026-11-01'), 'sandslide-daily-2026-11-01');

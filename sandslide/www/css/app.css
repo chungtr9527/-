@@ -1,22 +1,24 @@
-html, body { margin: 0; padding: 0; background: #0F1233; color: #F4F5FA; height: 100%; }
-html, body { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none;
+html, body { margin: 0; padding: 0; background: #0F1233; color: #F4F5FA; width: 100%; height: 100%; }
+/* explicit top/right/bottom/left everywhere: the `inset` shorthand needs Chrome 87 (Android WebViews 80-86 ignore it) */
+html, body { position: fixed; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; overscroll-behavior: none;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 body { font-family: system-ui, "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
-#game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#game { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 /* Transparent accessible controls positioned over canvas buttons by ui.js */
-.a11y { position: absolute; inset: 0; pointer-events: none; }
+.a11y { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
 .a11y button { position: absolute; opacity: 0; pointer-events: auto; background: none; border: 0; padding: 0; margin: 0; }
 .a11y button:focus-visible { opacity: 1; outline: 3px solid #FFC857; border-radius: 8px; }
 #a11y-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 /* DOM overlay for long text (privacy, help body) */
-.overlay { position: absolute; inset: 0; background: rgba(15, 18, 51, 0.96); overflow: auto; padding: max(16px, env(safe-area-inset-top)) 20px max(16px, env(safe-area-inset-bottom)); box-sizing: border-box; font-size: 16px; line-height: 1.5; }
+.overlay { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 18, 51, 0.96); overflow: auto; padding: max(16px, env(safe-area-inset-top)) 20px max(16px, env(safe-area-inset-bottom)); box-sizing: border-box; font-size: 16px; line-height: 1.5; }
 .overlay[hidden] { display: none; }
 .overlay h1 { font-size: 22px; margin: 0 0 12px; }
 .overlay h2 { font-size: 18px; margin: 20px 0 8px; }
 .overlay a { color: #FFC857; }
 .overlay .close { position: sticky; top: 0; float: right; min-width: 44px; min-height: 44px; font-size: 18px; background: #1A1F4D; color: #F4F5FA; border: 1px solid #2A3170; border-radius: 10px; }
-/* overlay widgets */
-.overlay .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 17px; }
+/* overlay widgets (a margin between row children instead of flex `gap`, which needs Chrome 84) */
+.overlay .row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 17px; }
+.overlay .row > * + * { margin-left: 12px; }
 .overlay .row input[type=checkbox] { width: 28px; height: 28px; accent-color: #FFC857; }
 .overlay .row select { font-size: 16px; padding: 8px 10px; border-radius: 8px; background: #1A1F4D; color: #F4F5FA; border: 1px solid #2A3170; min-height: 44px; }
 .overlay .pals { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }

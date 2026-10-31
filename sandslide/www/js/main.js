@@ -17,8 +17,10 @@
   var app = {
     screen: 'boot', game: null, profile: null, settings: null, dailyDoc: null, tutorial: null, toast: null, hint: '', confirm: null,
     gameOverInfo: null, dailyInfo: null, hasSave: false, chipVisible: false, rewardedReady: false, palettesUnlocked: [0], statsSnapshot: null,
-    reducedMotionEffective: false, privacyOptionsRequired: false, online: true, adShowing: false, instantFx: false, query: {}, firstEverGame: false
+    reducedMotionEffective: false, privacyOptionsRequired: false, online: true, adShowing: false, instantFx: false, query: {}, firstEverGame: false,
+    hasDailySave: false, pendingUnlocks: [], pulseUntil: 0
   };
+  var leaving = false, chained = false;
   var canvas, rafId = 0, lastNow = 0, frameTimes = [], boardVersion = 0, arrowCache = { v: -1, info: null };
   var drag = null, ghost = null, armedDir = null, pulseDirs = null, trayOffset = [0, 0, 0], gameStartedAt = 0, rewardedThisGame = false, pendingAdInset = null;
   var now = function () { return (g.performance && g.performance.now) ? g.performance.now() : Date.now(); };
@@ -45,9 +47,10 @@
     app.debug = !!(TB.flags && TB.flags.debugHooks);
   }
   function boot2() {
-    app.profile = doc('profile', { v: 1, bestScore: 0, bestCombo: 0, bestTiltLines: 0, gamesPlayed: 0, totalLines: 0, totalTilts: 0, firstPlayedAt: null, lastPlayedAt: null, tutorialDone: false, playDays: [], palettesUnlocked: [0], gameOvers: 0, freeRescueUsed: false, bannerUnlocked: false, seenTiltHint: false });
+    app.profile = doc('profile', { v: 1, bestScore: 0, bestCombo: 0, bestTiltLines: 0, gamesPlayed: 0, totalLines: 0, totalTilts: 0, firstPlayedAt: null, lastPlayedAt: null, tutorialDone: false, playDays: [], palettesUnlocked: [0], gameOvers: 0, freeRescueUsed: false, bannerUnlocked: false, seenTiltHint: false, bestDaily: 0, allClears: 0 });
     app.settings = doc('settings', { v: 1, sound: true, haptics: true, lang: 'auto', reducedMotion: null, largeText: false, leftHanded: false, palette: 0 });
-    app.dailyDoc = doc('daily', { v: 1, results: {}, streak: { current: 0, best: 0, lastDate: null } });
+    app.dailyDoc = doc('daily', { v: 1, results: {}, started: {}, streak: { current: 0, best: 0, lastDate: null } });
+    if (!app.dailyDoc.started) app.dailyDoc.started = {};
     app.palettesUnlocked = app.profile.palettesUnlocked || [0];
     applyLanguage();
     applySettings();
@@ -68,6 +71,7 @@
     relayout();
     initAds();
     app.hasSave = !!(Storage && Storage.get('save'));
+    app.hasDailySave = !!dailySaveForToday();
     consumePendingReward();
     if (app.debug) installDebugApi();
     if (app.debug && app.query.nofx) app.instantFx = true;
@@ -93,7 +97,7 @@
     R.setReduced(app.reducedMotionEffective);
     R.setPalette(app.palettesUnlocked.indexOf(s.palette) >= 0 ? s.palette : 0);
   }
-  function relayout() { R.resize(); arrowCache.v = -1; requestFrame(); }
+  function relayout() { R.resize(); arrowCache.v = -1; frameTimes.length = 0; requestFrame(); }
 
   // ---------- ads glue ----------
   function initAds() {
@@ -111,9 +115,10 @@
   }
   function applyAdInsetIfIdle() {
     if (pendingAdInset === null) return;
-    if (Input.isBusy() || FX.locked) { Tween.after(300, applyAdInsetIfIdle); return; }
+    if (Input.isBusy() || FX.locked) { setTimeout(applyAdInsetIfIdle, 300); return; }
     var h = pendingAdInset; pendingAdInset = null;
     if (Layout.adInset !== h) { Layout.setAdInset(h); relayout(); }
+    requestFrame();
   }
   function installFakeAds() {
     var ready = true;
@@ -128,8 +133,10 @@
   function consumePendingReward() {
     var pr = has(Ads, 'consumePendingReward') ? Ads.consumePendingReward() : null;
     if (!pr) return;
+    if (pr.at && Date.now() - pr.at > 10 * 60 * 1000) return; // stale
     if (pr.kind === 'rescue') { app.profile.freeRescueUsed = false; saveDoc('profile', app.profile); }
-    else if (pr.kind === 'tilt') { var save = Storage && Storage.get('save'); var gm = save ? Game.restore(save) : null; if (gm && !gm.isOver()) { gm.s.extraTiltsUsed = Math.max(0, gm.s.extraTiltsUsed - 1); gm.addTilt(); saveDoc('save', gm.serialize()); } }
+    else if (pr.kind === 'tilt') { var save = Storage && Storage.get('save'); var gm = save ? Game.restore(save) : null; if (gm && !gm.isOver() && gm.s.extraTiltsUsed < gm.s.rules.extraTiltPerGame) { gm.addTilt(); saveDoc('save', gm.serialize()); } }
+    call(Storage, 'flush');
   }
   function maybeShowBanner() { if (app.profile.bannerUnlocked && !app.firstEverGame && g.innerHeight >= Config.ADS.banner.minViewportHeight) call(Ads, 'showBanner'); }
   function rewardedReady(kind) { return !!(Ads && has(Ads, 'isRewardedReady') && Ads.isRewardedReady(kind)); }
@@ -137,7 +144,7 @@
   // ---------- render loop ----------
   function requestFrame() { if (!rafId) rafId = g.requestAnimationFrame(frame); }
   function needsLoop() {
-    return Tween.count() > 0 || Particles.count() > 0 || !!drag || !!armedDir || !!app.toast || !!FX.banner || (app.tutorial && app.tutorial.finger) || (app.game && app.game.s.needsTilt && app.screen === 'play');
+    return Tween.count() > 0 || Particles.count() > 0 || !!drag || !!armedDir || !!app.toast || !!FX.banner || (app.tutorial && app.tutorial.finger) || (app.game && app.game.s.needsTilt && app.screen === 'play' && now() < app.pulseUntil + 100);
   }
   function frame(ts) {
     rafId = 0;
@@ -147,8 +154,9 @@
     FX.pulse += dt / 1000;
     if (app.tutorial) updateFinger(ts);
     draw();
-    frameTimes.push(dt); if (frameTimes.length > 60) { frameTimes.shift(); var avg = frameTimes.reduce(function (a, b) { return a + b; }, 0) / 60; if (avg > Config.FX.slowFrameMs && !app.lowQuality) { app.lowQuality = true; R.setQuality(0.75); relayout(); } }
-    if (needsLoop()) requestFrame();
+    if (chained) { frameTimes.push(dt); if (frameTimes.length > 60) { frameTimes.shift(); var avg = frameTimes.reduce(function (a, b) { return a + b; }, 0) / 60; if (avg > Config.FX.slowFrameMs && !app.lowQuality) { app.lowQuality = true; R.setQuality(0.75); relayout(); } } }
+    chained = needsLoop();
+    if (chained) requestFrame();
   }
   function arrowInfo() { if (arrowCache.v !== boardVersion && app.game) { arrowCache.v = boardVersion; arrowCache.info = app.game.arrowInfo(); } return arrowCache.info; }
   function trayModel() {
@@ -175,7 +183,7 @@
       var s = app.game.s;
       var onlyDown = app.tutorial && app.tutorial.step === 3;
       var info = arrowInfo();
-      R.drawArrows({ info: info, stored: s.stored, armed: armedDir, pulse: pulseDirs, showFits: !!s.needsTilt, visible: !app.tutorial || app.tutorial.step === 3, only: onlyDown ? 'down' : null });
+      R.drawArrows({ info: info, stored: s.stored, armed: armedDir, pulse: now() < app.pulseUntil ? pulseDirs : null, showFits: !!s.needsTilt, visible: !app.tutorial || app.tutorial.step === 3, only: onlyDown ? 'down' : null });
       UI.drawHUD(app);
       R.drawTray(trayModel());
       if (sc === 'play') { UI.drawChip(app); UI.drawBottomBar(app); }
@@ -200,10 +208,25 @@
     requestFrame();
   }
   function finishInstant() { if (!app.instantFx) return; var T = now() + 1e6; for (var k = 0; k < 12 && Tween.count() > 0; k++) { Tween.update(T); T += 1e6; } Particles.clear(); }
-  function autosave() { if (!app.game || app.tutorial) return; if (app.game.isOver()) { saveDoc('save', null); app.hasSave = false; return; } saveDoc('save', app.game.serialize()); app.hasSave = true; }
+  function saveSlotFor(s) { if (s.mode === 'daily') return (s.meta && s.meta.practice) ? null : 'dailySave'; return 'save'; }
+  function autosave() {
+    if (!app.game || app.tutorial) return;
+    var s = app.game.s, slot = saveSlotFor(s); if (!slot) return;
+    if (app.game.isOver()) { clearSave(slot); return; }
+    saveDoc(slot, app.game.serialize());
+    if (slot === 'save') app.hasSave = true; else app.hasDailySave = true;
+  }
+  function clearSave(slot) { saveDoc(slot, null); if (slot === 'save') app.hasSave = false; else app.hasDailySave = false; }
+  function dailySaveForToday() {
+    var sv = Storage && Storage.get('dailySave');
+    if (!sv || !sv.meta || sv.meta.dateKey !== todayKey() || sv.over) { if (sv && Storage) saveDoc('dailySave', null); return null; }
+    return sv;
+  }
+  function resetScene() { Tween.clear(); Particles.clear(); app.toast = null; R.resetFX(); drag = null; ghost = null; armedDir = null; pulseDirs = null; }
   function showMenu() {
-    app.screen = 'menu'; app.game = null; app.tutorial = null; drag = null; ghost = null; armedDir = null; R.resetFX();
+    app.screen = 'menu'; app.game = null; app.tutorial = null; resetScene();
     app.hasSave = !!(Storage && Storage.get('save'));
+    app.hasDailySave = !!dailySaveForToday();
     app.dailyInfo = buildDailyInfo();
     UI.announce(t('menu.play'));
     requestFrame();
@@ -212,7 +235,8 @@
     var key = todayKey(), res = app.dailyDoc.results || {}, cal = [];
     for (var i = 29; i >= 0; i--) { var k = Daily.shiftKey(key, -i); cal.push({ key: k, score: res[k] ? res[k].score : null, today: i === 0 }); }
     var st = app.dailyDoc.streak || { current: 0, best: 0, lastDate: null };
-    return { key: key, number: Daily.numberFor(key), done: !!res[key], score: res[key] ? res[key].score : null, streak: Daily.isAlive(st, key) ? st.current : 0, bestStreak: st.best, calendar: cal };
+    var started = !!(app.dailyDoc.started && app.dailyDoc.started[key]);
+    return { key: key, number: Daily.numberFor(key), done: !!res[key], started: started, canContinue: !!dailySaveForToday(), score: res[key] ? res[key].score : null, streak: Daily.isAlive(st, key) ? st.current : 0, bestStreak: st.best, calendar: cal };
   }
 
   // ---------- game lifecycle ----------
@@ -222,8 +246,9 @@
     var meta = { mode: mode, startedAt: Date.now() }, seed;
     if (mode === 'daily') {
       var key = (opts.dateKey && Daily.isValidKey(opts.dateKey)) ? opts.dateKey : todayKey();
-      var already = !!(app.dailyDoc.results && app.dailyDoc.results[key]);
+      var already = !!(app.dailyDoc.results && app.dailyDoc.results[key]) || !!(app.dailyDoc.started && app.dailyDoc.started[key]);
       meta.dateKey = key; meta.practice = !!opts.practice || already || key !== todayKey(); seed = Daily.seedFor(key);
+      if (!meta.practice) { app.dailyDoc.started = app.dailyDoc.started || {}; app.dailyDoc.started[key] = true; saveDoc('daily', app.dailyDoc); }
     } else {
       seed = opts.seed || ('c-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36));
     }
@@ -231,15 +256,17 @@
     beginPlay();
     if (mode === 'daily' && !meta.practice && !app.profile.seenDailyReminder) { app.profile.seenDailyReminder = true; saveDoc('profile', app.profile); toast(t('daily.reminder'), 2500); }
   }
-  function resumeGame() {
-    var save = Storage && Storage.get('save');
-    var game = save ? Game.restore(save) : null;
-    if (!game) { startGame('classic'); return; }
+  function resumeGame(mode) {
+    var slot = mode === 'daily' ? 'dailySave' : 'save';
+    var save = Storage && Storage.get(slot), game = null;
+    try { game = save ? Game.restore(save) : null; } catch (e) { warn('restore', e); game = null; }
+    if (!game || game.isOver()) { clearSave(slot); if (mode === 'daily') startGame('daily', { dateKey: todayKey() }); else startGame('classic'); return; }
+    if (mode === 'daily' && (!game.s.meta || game.s.meta.dateKey !== todayKey())) { clearSave(slot); startGame('daily', { dateKey: todayKey() }); return; }
     app.game = game; beginPlay();
   }
   function beginPlay() {
-    app.screen = 'play'; app.tutorial = null; app.gameOverInfo = null; drag = null; ghost = null; armedDir = null; pulseDirs = null; app.hint = '';
-    R.resetFX(); boardVersion++; gameStartedAt = now(); rewardedThisGame = false; trayOffset = [0, 0, 0];
+    app.screen = 'play'; app.tutorial = null; app.gameOverInfo = null; app.hint = ''; resetScene();
+    boardVersion++; gameStartedAt = now(); rewardedThisGame = false; trayOffset = [0, 0, 0];
     app.firstEverGame = app.profile.gameOvers === 0;
     call(Ads, 'notifyGameStart', app.game.s.mode);
     call(Stats, 'record', 'game_start', { mode: app.game.s.mode });
@@ -252,6 +279,7 @@
       var info = arrowInfo(), any = Tilt.DIRS.some(function (d) { return info[d].fits; });
       pulseDirs = {}; Tilt.DIRS.forEach(function (d) { pulseDirs[d] = any ? info[d].fits : false; });
       app.hint = any ? t('tilt.needTilt') : t('tilt.noHelp');
+      app.pulseUntil = now() + 1600;
       UI.announce(t('a11y.noMoves'));
     } else { pulseDirs = null; app.hint = ''; }
   }
@@ -282,9 +310,9 @@
     if (res.lines && res.combo >= 2) { R.floatText(t('hud.combo', { n: res.combo }), 180, b.y - 6, { size: 16 }); call(Audio, 'play', 'comboUp'); }
     if (res.allClear) { Tween.after(200, function () { R.banner(t('tilt.allClear'), true); call(Audio, 'play', 'allClear'); }); }
     if (res.tiltsGained > 0) { R.glowMeter(); call(Audio, 'play', 'ready'); call(Haptics, 'light'); UI.announce(t('a11y.tiltReady'));
-      if (!app.profile.seenTiltHint && !app.tutorial) { app.profile.seenTiltHint = true; saveDoc('profile', app.profile); toast(t('tilt.arrowHint'), 2500); } }
+      if (!app.profile.seenTiltHint && !app.tutorial) { app.profile.seenTiltHint = true; saveDoc('profile', app.profile); toast(tiltHintText(), 3000); } }
     if (res.refilled) { call(Audio, 'play', 'refill'); for (var k = 0; k < 3; k++) (function (kk) { trayOffset[kk] = 24; Tween.add({ delay: kk * A.refillStaggerMs, dur: A.refillMs, ease: 'outQuad', update: function (p) { trayOffset[kk] = 24 * (1 - p); } }); })(k); }
-    call(Stats, 'record', 'placement', { lines: res.lines });
+    if (!app.tutorial) call(Stats, 'record', 'placement', { lines: res.lines });
     if (app.tutorial) tutorialAfterPlace();
     finishInstant(); requestFrame();
     return true;
@@ -301,12 +329,11 @@
     var b = Layout.rects.board;
     R.playScript(res.steps, { kind: 'tilt', dir: dir, onEvent: function (name, d) {
       if (name === 'land') { call(Audio, 'play', 'land'); call(Haptics, 'heavy'); }
-      if (name === 'clear') { call(Audio, 'play', 'clear', { lines: d.lines, combo: res.combo }); R.floatText('+' + res.points, b.x + b.w / 2, b.y + b.h / 2, { size: 26 });
+      if (name === 'clear') { call(Audio, 'play', 'clear', { lines: d.lines, combo: res.combo }); R.floatText('+' + res.points, b.x + b.w / 2, b.y + b.h / 2 - (res.banner ? 70 : 0), { size: 26 });
         if (res.banner) { R.banner(t('tilt.banner', { n: res.lines })); call(Audio, 'play', 'banner'); call(Haptics, 'heavy'); }
         if (res.allClear) Tween.after(500, function () { R.banner(t('tilt.allClear'), true); call(Audio, 'play', 'allClear'); }); }
-    }, onDone: afterAction });
-    call(Stats, 'record', 'tilt', { dir: dir, lines: res.lines });
-    app.profile.totalTilts = (app.profile.totalTilts || 0) + 1;
+    }, onDone: function () { afterAction(); if (app.tutorial && app.tutorial.step === 4) scheduleTutorialFinish(); } });
+    if (!app.tutorial) { call(Stats, 'record', 'tilt', { dir: dir, lines: res.lines }); app.profile.totalTilts = (app.profile.totalTilts || 0) + 1; }
     if (app.tutorial) tutorialAfterTilt();
     finishInstant(); requestFrame();
     return true;
@@ -315,37 +342,19 @@
   function onGameOver() {
     var game = app.game, s = game.s, prof = app.profile;
     drag = null; ghost = null; armedDir = null; pulseDirs = null; app.chipVisible = false; app.hint = '';
-    var isNewBest = s.score > (prof.bestScore || 0) && !(s.meta && s.meta.practice);
-    var official = s.mode === 'daily' && !(s.meta && s.meta.practice);
-    if (!(s.meta && s.meta.practice)) {
-      prof.bestScore = Math.max(prof.bestScore || 0, s.score); prof.bestCombo = Math.max(prof.bestCombo || 0, s.bestCombo); prof.bestTiltLines = Math.max(prof.bestTiltLines || 0, s.bestTiltLines);
-    }
-    prof.totalLines = (prof.totalLines || 0) + s.linesTotal; prof.gamesPlayed = (prof.gamesPlayed || 0) + 1; prof.gameOvers = (prof.gameOvers || 0) + 1; prof.lastPlayedAt = Date.now();
-    if (!prof.firstPlayedAt) prof.firstPlayedAt = Date.now();
-    var tk = todayKey(); prof.playDays = prof.playDays || []; if (prof.playDays.indexOf(tk) < 0) { prof.playDays.push(tk); if (prof.playDays.length > 400) prof.playDays.shift(); }
-    var unlocked = checkUnlocks();
-    prof.bannerUnlocked = true;
-    saveDoc('profile', prof);
-    if (official) {
-      app.dailyDoc.results[s.meta.dateKey] = { score: s.score, lines: s.linesTotal, tilts: s.tiltsUsed, hands: Math.min(s.handIndex, s.rules.hands), completed: !!s.completed, at: Date.now() };
-      app.dailyDoc.streak = Daily.updateStreak(app.dailyDoc.streak, s.meta.dateKey);
-      saveDoc('daily', app.dailyDoc);
-    }
-    saveDoc('save', null); app.hasSave = false;
-    call(Stats, 'record', 'game_over', { score: s.score, lines: s.linesTotal, pieces: s.placements, sec: Math.round((now() - gameStartedAt) / 1000), tilts: s.tiltsUsed, revived: s.rescuesUsed > 0, mode: s.mode });
-    call(Ads, 'notifyGameOver', { mode: s.mode, durationSec: Math.round((now() - gameStartedAt) / 1000), piecesPlaced: s.placements, rewardedWatched: rewardedThisGame });
-    app.gameOverInfo = { mode: s.mode, score: s.score, best: prof.bestScore, isNewBest: isNewBest, bestTiltLines: s.bestTiltLines, bestCombo: s.bestCombo, completed: !!s.completed,
-      hands: Math.min(s.handIndex, s.rules.hands || s.handIndex), total: s.rules.hands || 0, dailyNumber: s.meta && s.meta.dateKey ? Daily.numberFor(s.meta.dateKey) : 0,
-      rescue: game.rescueAvailable() ? (prof.freeRescueUsed ? 'ad' : 'free') : 'none', unlocked: unlocked, practice: !!(s.meta && s.meta.practice) };
+    var slot = saveSlotFor(s); if (slot) clearSave(slot);
+    app.gameOverInfo = { mode: s.mode, rescue: game.rescueAvailable() ? (prof.freeRescueUsed ? 'ad' : 'free') : 'none', practice: !!(s.meta && s.meta.practice) };
     call(Storage, 'flush');
-    // game-over sequence: dim + piece shake, then rescue or results
+    // game-over sequence: dim + piece shake, then rescue offer or results
     app.screen = 'overDim'; app.dimAlpha = 0;
     Tween.add({ dur: A.gameOverDimMs, update: function (p) { app.dimAlpha = 0.35 * p; } });
     call(Audio, 'play', 'gameOver');
     var proceed = function () {
       var next = function () {
+        if (app.game !== game) return;
+        app.privacyOptionsRequired = !!call(Ads, 'privacyOptionsRequired');
         if (app.gameOverInfo.rescue !== 'none') { app.rewardedReady = rewardedReady('rescue'); app.screen = 'rescue'; if (app.gameOverInfo.rescue === 'ad' && !app.rewardedReady) retryRewardedReady('rescue'); }
-        else showResults();
+        else { finalizeGame(); showResults(); }
         requestFrame();
       };
       if (has(Ads, 'showConsentFormIfRequired')) Ads.showConsentFormIfRequired().then(next, next); else next();
@@ -353,11 +362,42 @@
     if (app.instantFx) proceed(); else Tween.after(A.gameOverDimMs + 600, proceed);
     finishInstant(); requestFrame();
   }
+  // Once per game, when the game truly ends (rescue declined or unavailable): profile, daily results, stats, ad counters.
+  function finalizeGame() {
+    var game = app.game, prof = app.profile;
+    if (!game) return;
+    var s = game.s; s.meta = s.meta || {};
+    if (s.meta.finalized) return;
+    s.meta.finalized = true;
+    var practice = !!(s.meta && s.meta.practice), official = s.mode === 'daily' && !practice;
+    var bestKey = s.mode === 'daily' ? 'bestDaily' : 'bestScore';
+    var isNewBest = !practice && s.score > (prof[bestKey] || 0);
+    if (!practice) { prof[bestKey] = Math.max(prof[bestKey] || 0, s.score); prof.bestCombo = Math.max(prof.bestCombo || 0, s.bestCombo); prof.bestTiltLines = Math.max(prof.bestTiltLines || 0, s.bestTiltLines); }
+    prof.totalLines = (prof.totalLines || 0) + s.linesTotal; prof.allClears = (prof.allClears || 0) + s.allClears; prof.gamesPlayed = (prof.gamesPlayed || 0) + 1; prof.gameOvers = (prof.gameOvers || 0) + 1; prof.lastPlayedAt = Date.now();
+    if (!prof.firstPlayedAt) prof.firstPlayedAt = Date.now();
+    var tk = todayKey(); prof.playDays = prof.playDays || []; if (prof.playDays.indexOf(tk) < 0) { prof.playDays.push(tk); if (prof.playDays.length > 400) prof.playDays.shift(); }
+    app.pendingUnlocks = app.pendingUnlocks.concat(checkUnlocks());
+    prof.bannerUnlocked = true;
+    saveDoc('profile', prof);
+    if (official) {
+      app.dailyDoc.results[s.meta.dateKey] = { score: s.score, lines: s.linesTotal, tilts: s.tiltsUsed, hands: Math.min(s.handIndex, s.rules.hands), completed: !!s.completed, bestTiltLines: s.bestTiltLines, at: Date.now() };
+      if (s.meta.dateKey === tk) app.dailyDoc.streak = Daily.updateStreak(app.dailyDoc.streak, s.meta.dateKey);
+      saveDoc('daily', app.dailyDoc); clearSave('dailySave');
+    }
+    var durationSec = Math.round((now() - gameStartedAt) / 1000);
+    call(Stats, 'record', 'game_over', { score: s.score, lines: s.linesTotal, pieces: s.placements, sec: durationSec, tilts: s.tiltsUsed, revived: s.rescuesUsed > 0, mode: s.mode });
+    call(Ads, 'notifyGameOver', { mode: s.mode, durationSec: durationSec, piecesPlaced: s.placements, rewardedWatched: rewardedThisGame });
+    app.gameOverInfo = { mode: s.mode, score: s.score, best: prof[bestKey] || 0, isNewBest: isNewBest, bestTiltLines: s.bestTiltLines, bestCombo: s.bestCombo, completed: !!s.completed,
+      hands: Math.min(s.handIndex, s.rules.hands || s.handIndex), total: s.rules.hands || 0, dateKey: s.meta && s.meta.dateKey || null,
+      dailyNumber: s.meta && s.meta.dateKey ? Daily.numberFor(s.meta.dateKey) : 0, rescue: 'none', practice: practice };
+    call(Storage, 'flush');
+  }
   function retryRewardedReady(kind) { var tries = 0; var tick = function () { app.rewardedReady = rewardedReady(kind); requestFrame(); if (!app.rewardedReady && tries++ < 6 && (app.screen === 'rescue' || app.screen === 'chipSheet')) Tween.after(500, tick); }; Tween.after(500, tick); }
   function showResults() {
+    finalizeGame();
     var info = app.gameOverInfo; app.screen = 'gameover';
     if (info.isNewBest) { call(Audio, 'play', 'newBest'); call(Haptics, 'success'); if (!R.isReduced()) Particles.confetti(180, 120, 120); UI.announce(t('a11y.newBest')); }
-    if (info.unlocked && info.unlocked.length) toast(t('settings.palette') + ': ' + info.unlocked.map(function (i) { return t('palette.' + i); }).join(', '), 2500);
+    if (app.pendingUnlocks.length) { toast(t('settings.palette') + ': ' + app.pendingUnlocks.map(function (i) { return t('palette.' + i); }).join(', '), 2500); app.pendingUnlocks = []; }
     app.firstEverGame = false; maybeShowBanner();
     requestFrame();
   }
@@ -369,7 +409,8 @@
     return added;
   }
   function doRescue(free) {
-    var game = app.game; var res = game.rescue(); if (!res.ok) { showResults(); return; }
+    var game = app.game; if (!game || !game.isOver() || app.screen !== 'rescue') return;
+    var res = game.rescue(); if (!res.ok) { showResults(); return; }
     boardVersion++;
     if (free) { app.profile.freeRescueUsed = true; saveDoc('profile', app.profile); }
     app.screen = 'play'; app.dimAlpha = 0; app.gameOverInfo = null;
@@ -379,30 +420,34 @@
     finishInstant(); requestFrame();
   }
   function leaveResults(thenFn) {
+    if (leaving) return;
+    leaving = true;
+    var info = app.gameOverInfo;
+    var done = function () { leaving = false; thenFn(info); };
     var p = has(Ads, 'showInterstitial') ? Ads.showInterstitial('results') : Promise.resolve(false);
-    p.then(function () { thenFn(); }, function () { thenFn(); });
+    p.then(done, done);
   }
-  function shareNow() {
+  function shareNow(infoOverride) {
     if (!Share) { toast(t('common.offline')); return; }
-    var info = app.gameOverInfo || {}, s = app.game ? app.game.s : null, lang = I18N ? I18N.lang : 'en';
+    var info = infoOverride || app.gameOverInfo || {}, lang = I18N ? I18N.lang : 'en';
+    var s = app.game && app.game.s.mode === info.mode ? app.game.s : null;
     var url = Platform && Platform.isNative ? Config.SHARE.play : Config.SHARE.web;
-    var text = (s && s.mode === 'daily') ? Share.dailyText({ number: info.dailyNumber, score: info.score, hands: info.hands, total: info.total, lines: info.bestTiltLines, url: url, lang: lang })
+    var text = info.mode === 'daily' ? Share.dailyText({ number: info.dailyNumber, score: info.score, hands: info.hands, total: info.total, lines: info.bestTiltLines, url: url, lang: lang })
       : Share.scoreText({ score: info.score, url: url, lang: lang });
-    var cv = null; try { cv = Share.renderCard({ mode: s ? s.mode : 'classic', score: info.score, best: info.best, dateKey: s && s.meta ? s.meta.dateKey : null, dailyNumber: info.dailyNumber, bestTiltLines: info.bestTiltLines, hands: info.hands, total: info.total, board: s ? s.board : null, palette: R.getPalette(), lang: lang }); } catch (e) { warn('card', e); }
-    call(Stats, 'record', 'share', { mode: s ? s.mode : 'classic' });
+    var cv = null; try { cv = Share.renderCard({ mode: info.mode || 'classic', score: info.score, best: info.best, dateKey: info.dateKey || null, dailyNumber: info.dailyNumber, bestTiltLines: info.bestTiltLines, hands: info.hands, total: info.total, board: s ? s.board : null, palette: R.getPalette(), lang: lang }); } catch (e) { warn('card', e); }
+    call(Stats, 'record', 'share', { mode: info.mode || 'classic' });
     Share.share({ text: text, url: url, canvas: cv }).then(function (r) { if (r && (r.method === 'clipboard' || r.method === 'download')) toast(t(r.method === 'clipboard' ? 'share.copied' : 'share.saved')); });
   }
   function shareDaily() {
     var key = todayKey(), res = app.dailyDoc.results[key]; if (!res) return;
-    app.gameOverInfo = { mode: 'daily', score: res.score, best: app.profile.bestScore, bestTiltLines: 0, hands: res.hands, total: Config.RULES.daily.hands, dailyNumber: Daily.numberFor(key) };
-    app.game = null; shareNow();
+    shareNow({ mode: 'daily', score: res.score, best: app.profile.bestDaily || res.score, bestTiltLines: res.bestTiltLines || 0, hands: res.hands, total: Config.RULES.daily.hands, dailyNumber: Daily.numberFor(key), dateKey: key });
   }
 
   // ---------- tutorial ----------
-  function startTutorial() {
+  function startTutorial(replay, returnGame) {
     app.game = Game.create({ mode: 'tutorial', seed: 'tutorial', preset: TUTORIAL_PRESET });
-    app.screen = 'play'; app.gameOverInfo = null; drag = null; ghost = null; armedDir = null; pulseDirs = null; R.resetFX(); boardVersion++;
-    app.tutorial = { step: 1, hint: t(TUT_STEPS[1].hint), finger: { x: 0, y: 0, alpha: 0 }, t0: now() };
+    app.screen = 'play'; app.gameOverInfo = null; resetScene(); boardVersion++;
+    app.tutorial = { step: 1, hint: t(TUT_STEPS[1].hint), finger: { x: 0, y: 0, alpha: 0 }, t0: now(), replay: !!replay, returnGame: returnGame || null, doneTimer: null };
     app.chipVisible = false; requestFrame();
   }
   function tutorialAfterPlace() {
@@ -410,10 +455,21 @@
     if (tut.step === 1 || tut.step === 2) { tut.step++; tut.hint = t(TUT_STEPS[tut.step].hint); tut.t0 = now(); boardVersion++; }
     void step;
   }
-  function tutorialAfterTilt() { var tut = app.tutorial; tut.step = 4; tut.hint = t('tut.done'); tut.finger = null; Tween.after(app.instantFx ? 0 : 1400, finishTutorial); }
+  function tutorialAfterTilt() { var tut = app.tutorial; tut.step = 4; tut.hint = t('tut.done'); tut.finger = null; }
+  function scheduleTutorialFinish() { var tut = app.tutorial; if (!tut || tut.doneTimer) return; tut.doneTimer = Tween.after(app.instantFx ? 0 : 900, finishTutorial); }
   function finishTutorial() {
-    app.profile.tutorialDone = true; saveDoc('profile', app.profile); app.tutorial = null;
+    var tut = app.tutorial; if (!tut) return;
+    if (tut.doneTimer) tut.doneTimer.cancel();
+    var replay = tut.replay, back = tut.returnGame;
+    app.tutorial = null;
+    if (!app.profile.tutorialDone) { app.profile.tutorialDone = true; saveDoc('profile', app.profile); }
+    if (replay) { if (back && !back.isOver()) { app.game = back; beginPlay(); } else showMenu(); return; }
     startGame('classic');
+  }
+  function tiltHintText() {
+    var info = arrowInfo(), best = null, glyph = { up: '▲', down: '▼', left: '◀', right: '▶' };
+    if (info) Tilt.DIRS.forEach(function (d) { if (info[d].lines > 0 && (!best || info[d].lines > info[best].lines)) best = d; });
+    return best ? t('tilt.hintLines', { g: glyph[best], n: info[best].lines }) : t('tilt.hintGeneric');
   }
   function updateFinger(ts) {
     var tut = app.tutorial; if (!tut || !tut.finger) return;
@@ -461,15 +517,17 @@
       var x = lx - shape.w * CELL / 2, y = ly - Config.INPUT.dragLiftPx - shape.h * CELL;
       var c = Math.round((x - b.x) / CELL), r = Math.round((y - b.y) / CELL);
       var valid = app.game.canPlace(slot, r, c);
-      if (valid && app.tutorial && TUT_STEPS[app.tutorial.step] && !TUT_STEPS[app.tutorial.step].tilt) { var st = TUT_STEPS[app.tutorial.step]; valid = (r === st.r && c === st.c); }
+      var target = null;
+      if (app.tutorial && TUT_STEPS[app.tutorial.step] && !TUT_STEPS[app.tutorial.step].tilt) { var st = TUT_STEPS[app.tutorial.step]; target = { r: st.r, c: st.c }; if (valid) valid = (r === st.r && c === st.c); }
       var lines = null;
       if (valid) { var copy = Board.clone(app.game.s.board); Board.place(copy, shape, r, c, 0); lines = Board.findFullLines(copy); }
-      ghost = { shape: shape, r: r, c: c, valid: valid, lines: lines };
+      ghost = { shape: shape, r: r, c: c, valid: valid, lines: lines, target: target };
       requestFrame();
     },
     onDragEnd: function (slot, lx, ly) {
       var gh = ghost; drag = null; ghost = null;
       if (gh && gh.valid && !FX.locked) { if (doPlace(slot, gh.r, gh.c)) return; }
+      if (app.tutorial && gh && gh.target) toast(t('tut.dropHint'), 1500);
       call(Audio, 'play', 'invalid'); requestFrame();
     },
     onDragCancel: function () { drag = null; ghost = null; requestFrame(); },
@@ -486,15 +544,16 @@
   function releaseRubber() { var ox = FX.boardOffset.x, oy = FX.boardOffset.y; if (!ox && !oy) return; Tween.add({ dur: 120, ease: 'outQuad', update: function (p) { FX.boardOffset.x = ox * (1 - p); FX.boardOffset.y = oy * (1 - p); } }); requestFrame(); }
 
   function onButton(id) {
+    if (leaving || app.adShowing) return;
     call(Audio, 'play', 'tick');
     switch (id) {
       case 'menu.play': case 'menu.newGame':
         if (app.hasSave) { app.confirm = { text: t('menu.abandonConfirm'), yes: function () { saveDoc('save', null); startGame('classic'); } }; app.screen = 'confirm'; }
         else startGame('classic'); break;
-      case 'menu.continue': resumeGame(); break;
+      case 'menu.continue': resumeGame('classic'); break;
       case 'menu.daily': app.dailyInfo = buildDailyInfo(); app.screen = 'daily'; break;
       case 'menu.help': UI.openHelp(app, overlayAction); break;
-      case 'menu.settings': case 'pause.settings': UI.openSettings(app, overlayAction); break;
+      case 'menu.settings': case 'pause.settings': app.privacyOptionsRequired = !!call(Ads, 'privacyOptionsRequired'); UI.openSettings(app, overlayAction); break;
       case 'menu.stats': app.statsSnapshot = call(Stats, 'snapshot') || {}; UI.openStats(app, overlayAction); break;
       case 'play.pause': if (app.screen === 'play') { Input.cancel(); drag = null; ghost = null; app.screen = 'pause'; call(Storage, 'flush'); } break;
       case 'pause.resume': app.screen = 'play'; break;
@@ -504,17 +563,18 @@
         if (app.gameOverInfo.rescue === 'free') doRescue(true);
         else if (rewardedReady('rescue')) { rewardedThisGame = true; Ads.showRewarded('rescue').then(function (r) { if (r && r.rewarded) doRescue(false); else { toast(t('over.adNotFinished')); app.rewardedReady = rewardedReady('rescue'); requestFrame(); } }, function () { toast(t('over.noAd')); }); }
         break;
-      case 'rescue.decline': showResults(); break;
-      case 'over.again': leaveResults(function () { var s = app.gameOverInfo; startGame(s.mode, s.mode === 'daily' ? { practice: true } : {}); }); break;
-      case 'over.home': leaveResults(showMenu); break;
+      case 'rescue.decline': finalizeGame(); showResults(); break;
+      case 'over.again': leaveResults(function (info) { startGame(info.mode, info.mode === 'daily' ? { practice: true } : {}); }); break;
+      case 'over.home': leaveResults(function () { showMenu(); }); break;
       case 'over.share': shareNow(); break;
       case 'chip.open': app.rewardedReady = rewardedReady('tilt'); app.screen = 'chipSheet'; break;
       case 'chip.no': app.screen = 'play'; break;
       case 'chip.watch':
         app.screen = 'play';
-        if (rewardedReady('tilt')) { rewardedThisGame = true; Ads.showRewarded('tilt').then(function (r) { if (r && r.rewarded && app.game) { app.game.addTilt(); boardVersion++; R.glowMeter(); toast(t('chip.gained')); afterAction(); } else toast(t('over.adNotFinished')); }, function () { toast(t('over.noAd')); }); }
+        if (rewardedReady('tilt')) { rewardedThisGame = true; var gmRef = app.game; Ads.showRewarded('tilt').then(function (r) { if (r && r.rewarded) { if (app.game === gmRef && !gmRef.isOver()) { gmRef.addTilt(); boardVersion++; R.glowMeter(); toast(t('chip.gained')); afterAction(); } } else toast(t('chip.adNotFinished')); }, function () { toast(t('over.noAd')); }); }
         break;
       case 'daily.play': startGame('daily', { dateKey: todayKey() }); break;
+      case 'daily.continue': resumeGame('daily'); break;
       case 'daily.practice': startGame('daily', { dateKey: todayKey(), practice: true }); break;
       case 'daily.share': shareDaily(); break;
       case 'daily.back': showMenu(); break;
@@ -526,8 +586,8 @@
   }
   function overlayAction(action, el) {
     if (action === 'close') { UI.closeOverlay(); requestFrame(); return; }
-    if (action === 'tutorial') { UI.closeOverlay(); if (app.game && !app.game.isOver()) autosave(); startTutorial(); return; }
-    if (action === 'privacy') { call(Ads, 'openPrivacyOptions'); return; }
+    if (action === 'tutorial') { UI.closeOverlay(); var back = (app.game && !app.game.isOver() && !app.tutorial) ? app.game : null; if (back) { autosave(); call(Storage, 'flush'); } startTutorial(true, back); return; }
+    if (action === 'privacy') { var pp = call(Ads, 'openPrivacyOptions'); if (pp && pp.then) pp.then(function () { app.privacyOptionsRequired = !!call(Ads, 'privacyOptionsRequired'); }); return; }
     if (action === 'copy') { var txt = call(Stats, 'diagnosticsJSON') || '{}'; try { g.navigator.clipboard.writeText(txt).then(function () { var st = g.document.getElementById('copy-status'); if (st) st.textContent = t('stats.copied'); }); } catch (e) { /* ignore */ } return; }
     if (action === 'palette') { var idx = +el.getAttribute('data-index'); if (app.palettesUnlocked.indexOf(idx) >= 0) { app.settings.palette = idx; saveDoc('settings', app.settings); applySettings(); UI.openSettings(app, overlayAction); requestFrame(); } return; }
     if (action === 'setting') {
@@ -535,22 +595,24 @@
       if (key === 'lang') app.settings.lang = el.value; else app.settings[key] = !!el.checked;
       saveDoc('settings', app.settings); applyLanguage(); applySettings();
       if (key === 'sound' && el.checked) call(Audio, 'unlock');
-      if (key === 'lang') UI.openSettings(app, overlayAction);
+      if (key === 'lang') { UI.openSettings(app, overlayAction); boardVersion++; if (app.game && !app.game.isOver() && !app.tutorial) refreshStuck(); }
       if (app.tutorial) app.tutorial.hint = t(TUT_STEPS[app.tutorial.step] ? TUT_STEPS[app.tutorial.step].hint : 'tut.done');
       requestFrame();
     }
   }
   function onKey(e) {
+    if (leaving || app.adShowing) return;
     if (UI.isOverlayOpen()) { if (e.key === 'Escape') UI.closeOverlay(); return; }
     if (app.screen === 'play') { var m = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key]; if (m) { doTilt(m); e.preventDefault(); } else if (e.key === 'Escape' || e.key === 'p') onButton('play.pause'); }
     else if (app.screen === 'pause' && e.key === 'Escape') onButton('pause.resume');
   }
   function onBack() {
+    if (leaving || app.adShowing) return;
     if (UI.isOverlayOpen()) { UI.closeOverlay(); requestFrame(); return; }
     switch (app.screen) {
       case 'play': onButton('play.pause'); break;
       case 'pause': onButton('pause.resume'); break;
-      case 'gameover': onButton('over.home'); break;
+      case 'gameover': showMenu(); break;
       case 'rescue': onButton('rescue.decline'); break;
       case 'chipSheet': onButton('chip.no'); break;
       case 'confirm': onButton('confirm.no'); break;
@@ -569,7 +631,7 @@
   function installDebugApi() {
     g.__TB = { app: app, layout: Layout, game: function () { return app.game; }, state: function () { return app.game ? app.game.serialize() : null; }, screen: function () { return app.screen; },
       startGame: startGame, place: doPlace, tilt: doTilt, button: onButton, hand: function () { return app.game ? app.game.s.hand.slice() : null; }, fx: FX, instant: function (v) { app.instantFx = !!v; },
-      showMenu: showMenu, startTutorial: startTutorial, finishTutorial: finishTutorial, toast: toast, busy: function () { return FX.locked || Input.isBusy() || Tween.count() > 0; },
+      showMenu: showMenu, startTutorial: startTutorial, finishTutorial: finishTutorial, toast: toast, busy: function () { return FX.locked || Input.isBusy() || Tween.count() > 0 || leaving; }, resumeGame: resumeGame, finalizeGame: finalizeGame,
       refresh: function () { boardVersion++; arrowCache.v = -1; if (app.game) { app.game._updateStuck(); if (!app.game.isOver()) { refreshStuck(); updateChip(); } } requestFrame(); }, banner: function (txt) { R.banner(txt); requestFrame(); } };
   }
 

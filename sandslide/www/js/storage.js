@@ -1,4 +1,4 @@
-// Persistence: six JSON documents held in memory (synchronous get after init) and written through one backend —
+// Persistence: seven JSON documents held in memory (synchronous get after init) and written through one backend —
 // the Capacitor Preferences plugin on native, localStorage on the web, an in-memory map when neither works
 // (file:// private mode, blocked site data). set / update / remove are debounced 250 ms; flush() writes at once
 // (synchronously on the web) and resolves when every pending write has settled. Defaults are merged shallowly on
@@ -9,7 +9,8 @@
 
   var PREFIX = (TB.Config && TB.Config.STORAGE_PREFIX) || 'sandslide.';
   var DEBOUNCE_MS = 250;
-  var DOCS = ['profile', 'settings', 'daily', 'save', 'ads', 'stats'];
+  var DOCS = ['profile', 'settings', 'daily', 'save', 'dailySave', 'ads', 'stats'];
+  var SAVE_DOCS = ['save', 'dailySave'];   // game-in-progress slots: null when absent, never merged with defaults
 
   // Fresh objects on every call (nested defaults must never be shared between documents).
   var DEFAULTS = {
@@ -23,6 +24,7 @@
     },
     daily: function () { return { v: 1, results: {}, streak: { current: 0, best: 0, lastDate: null } }; },
     save: function () { return null; },
+    dailySave: function () { return null; },   // the Daily game in progress, kept apart from the Classic save
     ads: function () {
       return { v: 1, sessions: 0, lastInterstitialAt: 0, gameOversSinceInterstitial: 0, interstitialsToday: { date: null, count: 0 },
         consent: { canRequestAds: null, privacyOptionsRequired: false }, pendingReward: null };
@@ -38,6 +40,7 @@
   function noop() {}
   function isThenable(x) { return !!x && (typeof x === 'object' || typeof x === 'function') && typeof x.then === 'function'; }
   function valid(doc) { return DOCS.indexOf(doc) >= 0; }
+  function isSaveDoc(doc) { return SAVE_DOCS.indexOf(doc) >= 0; }
 
   // ---- backends: get(key) -> string|null (or a Promise of one), set(key, string), remove(key); may throw/reject ----
   function preferencesBackend(p) {
@@ -112,7 +115,7 @@
   function ensureBackend() { if (!backend) backend = chooseBackend(); return backend; }
 
   function normalize(doc, v) {
-    if (doc === 'save') return v && typeof v === 'object' ? v : null;
+    if (isSaveDoc(doc)) return v && typeof v === 'object' ? v : null;
     if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;     // -> defaults
     var out = DEFAULTS[doc]();
     Object.keys(v).forEach(function (k) { out[k] = v[k]; });
@@ -150,7 +153,7 @@
     if (!valid(doc)) return null;
     var v = docs[doc];
     if (v === undefined || v === null) {
-      if (doc === 'save') return null;
+      if (isSaveDoc(doc)) return null;
       v = docs[doc] = DEFAULTS[doc]();
     }
     return v;

@@ -18,6 +18,7 @@
 | AdMob 廣告單元名稱 | `sandslide_and_banner_bottom`、`sandslide_and_inter_gameover`、`sandslide_and_rw_rescue`、`sandslide_and_rw_tilt` |
 | GitHub Secrets | `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` |
 | 目標 / 編譯 SDK | API 36（Play 2026 年新 App 硬性要求） |
+| 每日流沙第 1 期日期（`DAILY_EPOCH`，`www/js/config.js`） | `2026-10-31`＝第 1 期；**上線後絕對不能改**（改了每一期的編號與題目種子都會位移，玩家的連續天數也會錯亂） |
 
 > GitHub Pages 備註：repo `chungtr9527/-` 的 Pages **已經開啟**（classic build，來源 `main`，根目錄有 `.nojekyll`）。遊戲與隱私權政策**只有在合併進 `main` 之後**才會出現在上面的網址。隱私權政策網址在 Play Console 填表時就要能打開，所以 `www/privacy.html`（把 `{{DEVELOPER_NAME}}`、`{{CONTACT_EMAIL}}` 換成真實值之後）要**比遊戲本體更早**合併到 `main`。
 
@@ -137,6 +138,14 @@
 - **公開開發者名稱與聯絡信箱**：給我之後會寫進 `www/js/config.js`（`DEVELOPER_NAME`、`CONTACT_EMAIL`）與 `www/privacy.html`（`{{DEVELOPER_NAME}}`、`{{CONTACT_EMAIL}}`）。這個信箱會公開在商店頁，建議開一個專用 Gmail。
 - **商標檢查**：在 Google Play、Apple App Store（美國與台灣）搜尋「Sandslide」「流沙方塊」；USPTO（tmsearch.uspto.gov）查 `Sandslide` 第 9／41 類；台灣 TIPO 商標檢索系統（twtmsearch.tipo.gov.tw）查「流沙方塊」。看到同名的遊戲或註冊中的商標就告訴我，改名要在商店資訊建立前。中文標題永遠帶「方塊＋消除／益智」，任何地方都不寫「俄羅斯方塊」「Tetris」「Block Blast」。
 - **手機**：至少一支 Android 實機（最好手勢導航與三鍵導航各一），開「安裝未知應用程式」以便側載 debug APK。
+
+### 0.8 從 GitHub Actions 下載 debug APK（實機測試用；每次 push 都會自動產生）
+
+1. GitHub → repo `chungtr9527/-` → 上方 **Actions** 分頁 → 左側 workflow 清單點 **`sandslide-android-debug`** → 點最新一筆**綠色勾勾**的 run（要先登入 GitHub 才下載得了）。
+2. run 頁面最下方的 **Artifacts** 區塊 → 下載 **`sandslide-debug-<commit sha>`**（zip，保留 14 天）→ 解壓縮，裡面就是 `app-debug.apk`。
+3. 把 `app-debug.apk` 傳到手機（USB、Google Drive、Nearby Share 或寄給自己）→ 在手機上點開；第一次要允許**安裝未知應用程式**（設定 → 應用程式 → 特殊應用程式存取權 → 安裝不明應用程式，對你點開檔案的那個 App 開啟）；Play Protect 要掃描就讓它掃。之後的版本會直接覆蓋安裝、保留存檔。細節與疑難排解見 `docs/android-notes.md` §6。
+4. debug 版用的是 **Google 測試廣告 ID**（範例 App ID + 測試單元），廣告可以隨便點、不會產生無效流量；它**不是**封閉測試用的版本（那個是 §4 打 tag 後 release workflow 產出的 `.aab`，用正式 ID）。
+5. 狀態：這個 workflow **前兩次執行都已成功**（原生依賴組合 AdMob plugin 8.3.0 / Kotlin 2.2 / play-services-ads 25.4 確認可編譯），之後每次 push 到 `sandslide/**` 都會再跑一次；失敗時 GitHub 會寄信通知。
 
 ---
 

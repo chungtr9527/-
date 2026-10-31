@@ -132,6 +132,83 @@ test('resume: a saved game continues after reload', async () => {
   await page.context().close();
 });
 
+test('replaying the tutorial from the pause menu returns to the same game', async () => {
+  const page = await H.open('?tutorial=0&mode=classic&seed=e2e-replay&nofx=1');
+  await page.autoplay(6);
+  const before = await page.api(() => window.__TB.state());
+  assert.ok(before.placements >= 1);
+  await page.api(() => window.__TB.button('play.pause'));
+  await page.api(() => window.__TB.button('pause.settings'));
+  await page.click('#overlay [data-action="tutorial"]');
+  await page.waitForFunction(() => !!window.__TB.app.tutorial, null, { timeout: 8000 });
+  assert.equal(await page.api(() => window.__TB.state().mode), 'tutorial');
+  // skip the tutorial: the paused game must come back untouched (not a fresh Classic game)
+  await page.api(() => window.__TB.button('tut.skip'));
+  await page.waitForFunction(() => !window.__TB.app.tutorial && window.__TB.screen() === 'play', null, { timeout: 8000 });
+  const after = await page.api(() => window.__TB.state());
+  assert.equal(after.mode, 'classic'); assert.equal(after.score, before.score); assert.deepEqual(after.board, before.board); assert.deepEqual(after.hand, before.hand);
+  assert.equal(await page.api(() => window.__TB.app.profile.tutorialDone), true);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+test('daily keeps its own save slot and can be continued from the Daily screen', async () => {
+  const page = await H.open('?tutorial=0&mode=daily&nofx=1');
+  await page.autoplay(4);
+  const before = await page.api(() => window.__TB.state());
+  assert.equal(before.meta.practice, false);
+  await page.api(() => TB.Storage.flush());
+  await page.goto(page.url().replace(/\?.*$/, '') + '?tutorial=0&nofx=1', { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__TB && window.__TB.screen() === 'menu', null, { timeout: 10000 });
+  assert.equal(await page.api(() => window.__TB.app.hasSave), false, 'no Classic save was written by the daily game');
+  assert.equal(await page.api(() => window.__TB.app.hasDailySave), true);
+  await page.api(() => window.__TB.button('menu.daily'));
+  assert.equal(await page.api(() => window.__TB.screen()), 'daily');
+  assert.equal(await page.api(() => window.__TB.app.dailyInfo.canContinue), true);
+  await page.shot('11-daily-continue');
+  await page.api(() => window.__TB.button('daily.continue'));
+  await page.waitForFunction(() => window.__TB.screen() === 'play', null, { timeout: 8000 });
+  const after = await page.api(() => window.__TB.state());
+  assert.equal(after.mode, 'daily'); assert.equal(after.meta.practice, false);
+  assert.equal(after.score, before.score); assert.deepEqual(after.board, before.board); assert.deepEqual(after.hand, before.hand);
+  // a second non-resume start of today's puzzle is practice (the official attempt was already started)
+  await page.api(() => window.__TB.startGame('daily', { dateKey: window.__TB.state().meta.dateKey }));
+  assert.equal(await page.api(() => window.__TB.state().meta.practice), true);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+test('settings show the privacy options button when the ads layer requires it', async () => {
+  const page = await H.open('?tutorial=0&mode=classic&seed=e2e-privacy&nofx=1&fakeads=1');
+  await page.api(() => window.__TB.button('play.pause'));
+  await page.api(() => window.__TB.button('pause.settings'));
+  assert.equal(await page.locator('#overlay [data-action="privacy"]').count(), 1);
+  await page.context().close();
+  const page2 = await H.open('?tutorial=0&mode=classic&seed=e2e-privacy&nofx=1');
+  await page2.api(() => window.__TB.button('play.pause'));
+  await page2.api(() => window.__TB.button('pause.settings'));
+  assert.equal(await page2.locator('#overlay [data-action="privacy"]').count(), 0, 'web build without ads has no privacy button');
+  await page2.context().close();
+});
+
+test('results: a double tap on Play again starts exactly one game', async () => {
+  const page = await H.open('?tutorial=0&mode=classic&seed=e2e-double&nofx=1&fakeads=1');
+  await page.autoplay(2000);
+  await page.waitForFunction(() => ['rescue', 'gameover'].includes(window.__TB.screen()), null, { timeout: 8000 });
+  if (await page.api(() => window.__TB.screen()) === 'rescue') await page.api(() => window.__TB.button('rescue.decline'));
+  await page.waitForFunction(() => window.__TB.screen() === 'gameover', null, { timeout: 8000 });
+  const overs = await page.api(() => window.__TB.app.profile.gameOvers);
+  assert.equal(overs, 1, 'game over counted once even though the rescue sheet was shown first');
+  await page.api(() => { window.__TB.button('over.again'); window.__TB.button('over.again'); });
+  await page.waitForFunction(() => window.__TB.screen() === 'play' && window.__TB.state().placements === 0, null, { timeout: 8000 });
+  const seed1 = await page.api(() => window.__TB.state().seed);
+  await page.waitForTimeout(900);
+  assert.equal(await page.api(() => window.__TB.state().seed), seed1, 'second tap did not start another game');
+  assert.equal(await page.api(() => window.__TB.busy()), false);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('small and landscape viewports keep the board away from the screen edges', async () => {
   for (const dev of ['small', 'landscape']) {
     const page = await H.open('?tutorial=0&mode=classic&nofx=1', dev);

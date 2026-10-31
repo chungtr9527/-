@@ -55,7 +55,7 @@ Required keys (English meaning in parentheses; zh-TW must read like a native Tai
 `menu.play` (Play) `menu.continue` (Continue) `menu.newGame` (New game) `menu.daily` (Daily Slide) `menu.help` (How to play) `menu.settings` (Settings)
 `menu.stats` (Stats) `menu.best` (Best) `menu.todayBest` (Today's best) `menu.abandonConfirm` (Abandon the current game?) `menu.tagline` (Tilt the board. Blocks slide like sand.)
 `hud.score` `hud.best` `hud.combo` (Combo ×{n}) `hud.nextTilt` (Next Tilt: {n}) `hud.max` (MAX) `hud.tiltReady` (Tilt ready!) `hud.pause` `hud.hand` (Hand {n}/{total})
-`tilt.needTilt` (No room — tilt toward a ✓!) `tilt.noHelp` (Even a tilt can't make room…) `tilt.arrowHint` (▼2 = tilting down clears 2 lines)
+`tilt.needTilt` (No room — tilt toward a ✓!) `tilt.noHelp` (Even a tilt can't make room…) `tilt.hintLines` ({g}{n} = that tilt clears {n} lines; shown once, from the live arrow info) `tilt.hintGeneric` (Arrow numbers = lines that tilt clears · ✓ = a piece will fit)
 `tilt.haveTilt` (You have a Tilt — try swiping!) `tilt.banner` (SANDSLIDE ×{n}!) `tilt.allClear` (Board clear!) `tilt.noop` (Already packed!)
 `tut.title` (How to play) `tut.step1` (Fill a line to clear it) `tut.step2` (Blocks fill the Tilt meter) `tut.step3` (Swipe down!) `tut.skip` (Skip) `tut.done` (That's it — play!)
 `over.title` (No room left!) `over.dailyDone` (Daily complete!) `over.score` `over.best` `over.newBest` (New best!) `over.bestTilt` (Best tilt: {n} lines)
@@ -109,7 +109,7 @@ TB.Storage = {
   set(doc, value), update(doc, patch) -> object,   // debounced write (250 ms)
   flush() -> Promise<void>,             // immediate write; call on pause / game over / before showing an ad
   remove(doc),
-  DOCS: ['profile','settings','daily','save','ads','stats']
+  DOCS: ['profile','settings','daily','save','dailySave','ads','stats']   // 'save' = Classic slot, 'dailySave' = today's official Daily attempt
 };
 ```
 Default documents (create on first `get` when missing): `profile {v:1, bestScore:0, bestCombo:0, bestTiltLines:0, gamesPlayed:0, totalLines:0, totalTilts:0,

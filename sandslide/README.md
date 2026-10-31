@@ -33,6 +33,7 @@ docs/           CONTRACTS（模組 API）、launch-checklist（上架步驟）�
 ## 建置 Android
 
 - Debug APK：push 到 GitHub 後由 `sandslide-android-debug` workflow 產生 artifact（不需本機 Android SDK）。
+- 下載 debug APK：GitHub → **Actions** → workflow `sandslide-android-debug` → 最新綠色 run → Artifacts `sandslide-debug-<sha>`（zip，保留 14 天）→ 解壓得到 `app-debug.apk`；手機要先允許「安裝未知應用程式」；debug 版只用 Google 測試廣告 ID（步驟見 docs/android-notes.md §6）。
 - Release AAB/APK：打 tag `vX.Y.Z` → `sandslide-android-release`（需要 4 個 Secrets，見 docs/launch-checklist.md）。
 - 正式廣告 ID 貼在 `www/js/ads-ids.prod.js` 與 `android/app/src/main/res/values/strings.xml`；release 前 `npm run flags:release` 會移除測試 ID，workflow 也會檢查。
 

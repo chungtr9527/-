@@ -261,7 +261,11 @@
       if (s) { s.loaded = true; s.loading = false; s.loadedAt = mono(); }
     }));
     L.push(on(p, 'onRewardedVideoAdFailedToLoad', noop));                                 // retries ride on the prepare promise
-    L.push(on(p, 'onRewardedVideoAdShowed', function () { if (fullscreen && fullscreen.kind === 'rewarded') fullscreen.showed = true; }));
+    // Once content is on screen the SDK guarantees a Dismissed / FailedToShow, so the "nothing appeared" watchdog is
+    // cancelled here: a reward may then arrive however long the ad takes.
+    L.push(on(p, 'onRewardedVideoAdShowed', function () {
+      if (fullscreen && fullscreen.kind === 'rewarded') { fullscreen.showed = true; cancel(fullscreen.watchdog); fullscreen.watchdog = null; }
+    }));
     L.push(on(p, 'onRewardedVideoAdFailedToShow', function (err) { onRewardedFailedToShow(err); }));
     L.push(on(p, 'onRewardedVideoAdDismissed', function () { onRewardedDismissed(); }));
     L.push(on(p, 'onRewardedVideoAdReward', function (item) { onRewardedReward(item); }));
@@ -614,7 +618,7 @@
     });
   }
   // Event-driven show: one token per show; resolved exactly once by the reward / dismissed / failed-to-show events or
-  // the watchdog, never by showRewardVideoAd's promise.
+  // the watchdog (show() called but nothing appeared within showWatchdogSec), never by showRewardVideoAd's promise.
   function present(p, kind, s) {
     return new Promise(function (resolve) {
       var fs = fullscreen = {
@@ -629,8 +633,9 @@
       try { pr = p.showRewardVideoAd({ adId: s.adId }); } catch (e) { onRewardedFailedToShow(e); return; }
       // Only a rejection (not prepared / activity gone) is informative; a resolution duplicates the reward event.
       if (isThenable(pr)) pr.then(noop, function (err) { if (fullscreen === fs && !fs.done && !fs.showed) onRewardedFailedToShow(err); });
-      fs.watchdog = later(function () {
+      fs.watchdog = later(function () {   // cancelled by onRewardedVideoAdShowed: a visible ad is never timed out
         fs.watchdog = null;
+        if (fs.showed || fs.done) return;
         record('ad_rw_timeout', { kind: kind });
         settleRewarded(fs, { rewarded: false, reason: 'timeout' });
         endRewarded(fs);
@@ -675,9 +680,9 @@
     flush();
     record('ad_rw_reward', { kind: fs.rwKind, type: item && item.type, amount: item && item.amount });
     settleRewarded(fs, { rewarded: true, reason: 'reward' });
-    later(function () {   // cleared after the game's continuation ran
+    later(function () {   // cleared after the game's continuation ran, and flushed so a process kill cannot re-apply it
       var d = doc();
-      if (d.pendingReward && d.pendingReward.token === fs.token) save({ pendingReward: null });
+      if (d.pendingReward && d.pendingReward.token === fs.token) { save({ pendingReward: null }); flush(); }
     }, 0);
   }
   function onRewardedDismissed() {
@@ -698,7 +703,7 @@
   // A reward whose callback ran but which the game never applied (process died in between), or null. Clears it.
   function consumePendingReward() {
     var d = doc(), pr = d.pendingReward || null;
-    if (pr) save({ pendingReward: null });
+    if (pr) { save({ pendingReward: null }); flush(); }   // flushed at once: a process kill must not re-apply it
     return pr;
   }
 

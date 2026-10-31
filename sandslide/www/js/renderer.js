@@ -180,9 +180,11 @@
   }
   // ghost: {shape, r, c, valid, lines:{rows, cols}}
   function drawGhost(ghost) {
-    if (!ghost || !ghost.valid) return;
+    if (!ghost) return;
     var b = Layout.rects.board, cell = b.cell;
     ctx.save(); ctx.translate(FX.boardOffset.x, FX.boardOffset.y);
+    if (ghost.target && !ghost.valid) { drawShape(ghost.shape, b.x + ghost.target.c * cell, b.y + ghost.target.r * cell, cell, 1, 0.5, 'ghost'); ctx.restore(); return; }
+    if (!ghost.valid) { ctx.restore(); return; }
     if (ghost.lines) {
       ctx.strokeStyle = palette.text; ctx.lineWidth = 2;
       ghost.lines.rows.forEach(function (r) { roundRect(ctx, b.x + 1, b.y + r * cell + 1, b.w - 2, cell - 2, 6); ctx.stroke(); });
@@ -219,12 +221,13 @@
       arrowPath(cx, cy, d, size); ctx.fill();
       ctx.globalAlpha = 1;
       if (hasTilt && inf) {
-        var label = inf.lines > 0 ? (inf.fits && arrows.showFits ? inf.lines + '✓' : String(inf.lines)) : (inf.fits ? '✓' : '');
+        var label = inf.lines > 0 ? (inf.fits && arrows.showFits ? inf.lines + '✓' : String(inf.lines)) : (inf.fits && arrows.showFits ? '✓' : '');
         if (label) {
           var px, py;
           if (d === 'up' || d === 'down') { px = cx + 26; py = cy; } else { px = cx; py = cy + 28; }
           ctx.font = font(inf.lines > 0 ? 14 : 13, 800);
           var w = Math.max(20, ctx.measureText(label).width + 10);
+          px = Math.max(w / 2 + 2, Math.min(Layout.LW - w / 2 - 2, px));
           ctx.fillStyle = inf.lines > 0 ? palette.accent : withAlpha(palette.accent, 0.8);
           roundRect(ctx, px - w / 2, py - 10, w, 20, 10); ctx.fill();
           text(label, px, py + 0.5, { size: inf.lines > 0 ? 14 : 13, weight: 800, color: Config.PALETTE.bg, align: 'center' });

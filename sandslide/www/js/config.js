@@ -83,7 +83,7 @@
       web: 'https://chungtr9527.github.io/sandslide/',
       play: 'https://play.google.com/store/apps/details?id=io.github.chungtr9527.sandslide'
     },
-    DAILY_EPOCH: '2026-11-01',
+    DAILY_EPOCH: '2026-10-31',
     CONTACT_EMAIL: 'REPLACE@example.com',
     DEVELOPER_NAME: 'REPLACE',
     STORAGE_PREFIX: 'sandslide.',

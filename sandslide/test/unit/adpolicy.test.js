@@ -434,10 +434,16 @@ describe('TB.Ads rewarded (event-driven)', () => {
     assert.equal(persisted.length, 1, 'written inside the reward callback');
     assert.equal(persisted[0][2].pendingReward.kind, 'rescue');
     assert.equal(typeof persisted[0][2].pendingReward.token, 'string');
+    assert.equal(persisted[0][2].pendingReward.at, c.clock.epoch, 'carries the wall-clock timestamp');
+    const persistedIdx = storage.log.indexOf(persisted[0]);
+    assert.deepEqual(storage.log[persistedIdx + 1], ['flush'], 'flushed right after being written');
     assert.deepEqual(await p, { rewarded: true, reason: 'reward' });
     assert.deepEqual(doc(c).pendingReward && doc(c).pendingReward.kind, 'rescue', 'still there for the game\'s continuation');
     mock.timers.tick(0);
     assert.equal(doc(c).pendingReward, null, 'cleared after resolving');
+    const clearedIdx = storage.log.findIndex((e, i) => i > persistedIdx && e[0] === 'update' && e[2].pendingReward === null);
+    assert.ok(clearedIdx > persistedIdx, 'the clear is persisted');
+    assert.deepEqual(storage.log[clearedIdx + 1], ['flush'], 'and flushed at once so a process kill cannot re-apply the reward');
     fake.emit('onRewardedVideoAdReward', { type: 'coins', amount: 1 });   // duplicate: ignored (token de-dup)
     assert.equal(storage.log.filter((e) => e[0] === 'update' && e[2].pendingReward).length, 1);
     assert.deepEqual(hooks.fs, ['start'], 'the ad is still on screen');
@@ -486,18 +492,51 @@ describe('TB.Ads rewarded (event-driven)', () => {
     assert.deepEqual(c.hooks.fs, ['start', 'end']);
   });
 
-  test('60 s watchdog resolves {rewarded:false, reason:timeout}; the late dismissal only reloads', async () => {
+  test('once the ad is on screen the watchdog is off: a reward arriving long after 60 s is still honoured', async () => {
+    const c = await ready();
+    const { Ads, fake, hooks } = c;
+    const p = Ads.showRewarded('rescue');
+    fake.emit('onRewardedVideoAdShowed');
+    mock.timers.tick(TB.Config.ADS.rewarded.showWatchdogSec * 1000 * 5);   // a long ad: five watchdog windows go by
+    assert.equal(Ads.isShowingFullscreen(), true, 'a visible ad is never timed out');
+    assert.deepEqual(hooks.fs, ['start']);
+    assert.equal(c.stats.has('ad_rw_timeout'), false);
+    fake.emit('onRewardedVideoAdReward', { type: 'coins', amount: 1 });
+    assert.deepEqual(await p, { rewarded: true, reason: 'reward' });
+    assert.equal(doc(c).pendingReward && doc(c).pendingReward.kind, 'rescue');
+    fake.emit('onRewardedVideoAdDismissed');
+    assert.deepEqual(hooks.fs, ['start', 'end']);
+    assert.equal(doc(c).lastFullscreenEndAt, c.clock.epoch);
+    mock.timers.tick(1000);
+    assert.equal(fake.count('prepareRewardVideoAd'), 2, 're-prepared one second after dismissal');
+  });
+
+  test('an ad that never appears times out after 60 s with {rewarded:false, reason:timeout}; the late dismissal only reloads', async () => {
     const c = await ready();
     const p = c.Ads.showRewarded('rescue');
-    c.fake.emit('onRewardedVideoAdShowed');
-    mock.timers.tick(TB.Config.ADS.rewarded.showWatchdogSec * 1000);
+    mock.timers.tick(TB.Config.ADS.rewarded.showWatchdogSec * 1000 - 1);
+    assert.equal(c.Ads.isShowingFullscreen(), true, 'still waiting for the SDK');
+    mock.timers.tick(1);
     assert.deepEqual(await p, { rewarded: false, reason: 'timeout' });
     assert.deepEqual(c.hooks.fs, ['start', 'end']);
     assert.equal(c.stats.has('ad_rw_timeout'), true);
+    assert.equal(doc(c).lastFullscreenEndAt, 0, 'nothing was watched: no gap timestamp');
     c.fake.emit('onRewardedVideoAdDismissed');
     assert.deepEqual(c.hooks.fs, ['start', 'end'], 'no second end');
     mock.timers.tick(1000);
     assert.equal(c.fake.count('prepareRewardVideoAd') >= 2, true);
+  });
+
+  test('consumePendingReward hands back a reward the game never applied, once, and clears + flushes it at once', () => {
+    const at = new Date(2026, 10, 1, 11, 59, 0).getTime();
+    const c = setup({ docs: { ads: { v: 1, pendingReward: { token: 'rescue-7-' + at, kind: 'rescue', at } } } });
+    const { Ads, storage } = c;
+    const before = storage.log.length;
+    assert.deepEqual(Ads.consumePendingReward(), { token: 'rescue-7-' + at, kind: 'rescue', at });
+    assert.equal(doc(c).pendingReward, null);
+    assert.deepEqual(storage.log.slice(before), [['update', 'ads', { pendingReward: null }], ['flush']], 'cleared and flushed, nothing else');
+    assert.equal(Ads.consumePendingReward(), null, 'consumed: gone');
+    assert.equal(storage.log.length, before + 2, 'nothing to clear: nothing written');
   });
 
   test('only one full-screen ad at a time', async () => {

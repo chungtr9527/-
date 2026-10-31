@@ -55,7 +55,7 @@ afterEach(() => { delete globalThis.localStorage; delete globalThis.Capacitor; }
 test('exposes the contract API; defaults are created on first get, carry v:1 and are not written by themselves', async () => {
   const ls = installLocalStorage(fakeLocalStorage());
   const S = fresh();
-  assert.deepEqual(S.DOCS, ['profile', 'settings', 'daily', 'save', 'ads', 'stats']);
+  assert.deepEqual(S.DOCS, ['profile', 'settings', 'daily', 'save', 'dailySave', 'ads', 'stats']);
   for (const k of ['init', 'get', 'set', 'update', 'flush', 'remove']) assert.equal(typeof S[k], 'function', k);
   await S.init();
   const p = S.get('profile');
@@ -65,6 +65,7 @@ test('exposes the contract API; defaults are created on first get, carry v:1 and
   assert.deepEqual(S.get('settings'), { v: 1, sound: true, haptics: true, lang: 'auto', reducedMotion: null, largeText: false, leftHanded: false, palette: 0 });
   assert.deepEqual(S.get('daily'), { v: 1, results: {}, streak: { current: 0, best: 0, lastDate: null } });
   assert.equal(S.get('save'), null);
+  assert.equal(S.get('dailySave'), null, 'the Daily slot starts empty too');
   assert.deepEqual(S.get('ads'), { v: 1, sessions: 0, lastInterstitialAt: 0, gameOversSinceInterstitial: 0, interstitialsToday: { date: null, count: 0 },
     consent: { canRequestAds: null, privacyOptionsRequired: false }, pendingReward: null });
   const st = S.get('stats');
@@ -271,4 +272,45 @@ test('init is idempotent and a write made before the async load finishes wins ov
   assert.equal(s.sound, true); assert.equal(s.haptics, false);
   assert.equal(s.palette, 0, 'a touched document is not replaced by the stored one');
   await S.flush();
+});
+
+test('dailySave is a second game-in-progress slot handled like save (null default, no default merge, independent of save)', async () => {
+  const ls = installLocalStorage(fakeLocalStorage());
+  ls.store.set(PREFIX + 'dailySave', JSON.stringify({ v: 1, mode: 'daily', seed: 'd-2026-11-01' }));
+  ls.store.set(PREFIX + 'save', 'not json {');
+  const S = fresh();
+  await S.init();
+  assert.deepEqual(S.get('dailySave'), { v: 1, mode: 'daily', seed: 'd-2026-11-01' });
+  assert.equal(S.get('save'), null, 'the Classic slot is separate (and corrupt here)');
+  S.set('save', { v: 1, mode: 'classic' });
+  assert.equal(S.get('dailySave').mode, 'daily', 'writing the Classic save leaves the Daily one alone');
+  const d = S.update('dailySave', { score: 99 });
+  assert.equal(S.get('dailySave'), d, 'update returns the live document');
+  await S.flush();
+  assert.deepEqual(JSON.parse(ls.store.get(PREFIX + 'dailySave')), { v: 1, mode: 'daily', seed: 'd-2026-11-01', score: 99 });
+  assert.deepEqual(JSON.parse(ls.store.get(PREFIX + 'save')), { v: 1, mode: 'classic' });
+  S.remove('dailySave');
+  assert.equal(S.get('dailySave'), null);
+  assert.deepEqual(S.get('save'), { v: 1, mode: 'classic' }, 'removing the Daily save keeps the Classic one');
+  await S.flush();
+  assert.equal(ls.store.has(PREFIX + 'dailySave'), false);
+  assert.ok(ls.store.has(PREFIX + 'save'));
+  S.set('dailySave', null);
+  await S.flush();
+  assert.equal(S.get('dailySave'), null);
+  assert.equal(ls.store.has(PREFIX + 'dailySave'), false);
+  const u = S.update('dailySave', { v: 1, mode: 'daily' });
+  assert.equal(S.get('dailySave'), u, 'update on a missing dailySave creates it');
+  assert.equal(u.mode, 'daily');
+});
+
+test('a dailySave that is not an object (wrong type, corrupt JSON, empty) loads as null, never as merged defaults', async () => {
+  for (const raw of ['42', '"daily"', 'null', 'true', 'not json {', '']) {
+    const ls = installLocalStorage(fakeLocalStorage());
+    ls.store.set(PREFIX + 'dailySave', raw);
+    const S = fresh();
+    await S.init();
+    assert.equal(S.get('dailySave'), null, 'raw ' + JSON.stringify(raw));
+    assert.equal(S.get('save'), null);
+  }
 });

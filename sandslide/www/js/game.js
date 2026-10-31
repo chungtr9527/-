@@ -181,7 +181,7 @@
   }
 
   function restore(json) {
-    if (!json || json.v !== 1) return null;
+    if (!json || json.v !== 1 || !json.rules || typeof json.rules !== 'object' || !Array.isArray(json.board) || json.board.length !== 64 || !Array.isArray(json.hand) || json.hand.length !== 3) return null;
     var s = baseState(json.mode, json.seed, json.rules);
     Object.keys(s).forEach(function (k) { if (k in json && k !== 'board') s[k] = json[k]; });
     s.board = Uint8Array.from(json.board);

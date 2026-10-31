@@ -82,7 +82,7 @@
     button('menu.help', { x: 40, y: y, w: w3, h: 44 }, t('menu.help'), { size: 14 });
     button('menu.settings', { x: 40 + w3 + gap, y: y, w: w3, h: 44 }, t('menu.settings'), { size: 14 });
     button('menu.stats', { x: 40 + 2 * (w3 + gap), y: y, w: w3, h: 44 }, t('menu.stats'), { size: 14 });
-    R.text('v' + Config.VERSION, 180, Layout.L - 14, { size: 11, color: pal.text2, align: 'center' });
+    if (Layout.L >= 640) R.text('v' + Config.VERSION, 180, Layout.L - 14, { size: 11, color: pal.text2, align: 'center' });
   }
 
   function drawHUD(app) {
@@ -94,7 +94,8 @@
     }
     R.text(t('hud.score'), 16, 22, { size: 12 * ts, weight: 700, color: pal.text2 });
     R.text(String(s.score), 16, 48, { size: 28 * ts, weight: 900, color: pal.text });
-    var best = Math.max(app.profile ? app.profile.bestScore : 0, s.score);
+    var bestRef = s.mode === 'daily' ? (app.profile ? app.profile.bestDaily || 0 : 0) : (app.profile ? app.profile.bestScore || 0 : 0);
+    var best = (s.meta && s.meta.practice) ? bestRef : Math.max(bestRef, s.score);
     R.text(t('hud.best'), 180, 22, { size: 12 * ts, weight: 700, color: pal.text2, align: 'center' });
     R.text(String(best), 180, 46, { size: 18 * ts, weight: 800, color: pal.text, align: 'center' });
     if (s.mode === 'daily') R.text(t('hud.hand', { n: Math.min(s.handIndex, s.rules.hands), total: s.rules.hands }), 180, 66, { size: 12 * ts, weight: 700, color: pal.text2, align: 'center' });
@@ -123,22 +124,26 @@
   function drawBottomBar(app) {
     var b = Layout.rects.bottom, pal = P();
     if (app.tutorial) { button('tut.skip', { x: b.x + b.w - 100, y: b.y, w: 92, h: b.h }, t('tut.skip'), { ghost: true, size: 15 }); return; }
-    button('play.pause', { x: b.x + 8, y: b.y, w: 56, h: b.h }, '❚❚', { ghost: true, size: 18 });
+    var lh = !!(app.settings && app.settings.leftHanded);
+    button('play.pause', { x: lh ? b.x + b.w - 64 : b.x + 8, y: b.y, w: 56, h: b.h }, '❚❚', { ghost: true, size: 18 });
     if (app.hint) R.text(app.hint, 200, b.y + b.h / 2, { size: 13 * textScale(app), weight: 700, color: pal.text2, align: 'center', maxWidth: 240 });
   }
   function drawChip(app) {
     if (!app.chipVisible) return;
     var r = Layout.rects.chip;
+    if (app.settings && app.settings.leftHanded) r = { x: Layout.LW - r.x - r.w, y: r.y, w: r.w, h: r.h };
     button('chip.open', r, t('chip.outOfEnergy'), { primary: true, size: 12 });
   }
   function drawToast(app) {
     if (!app.toast) return;
     var pal = P(), c = R.ctx(), b = Layout.rects.board;
     var w = Math.min(340, R.measure(app.toast.text, 15, 700) + 28);
+    var overPanel = ['rescue', 'chipSheet', 'gameover', 'confirm', 'menu', 'daily'].indexOf(app.screen) >= 0;
+    var ty = overPanel ? 48 : b.y + b.h / 2;
     c.globalAlpha = app.toast.alpha != null ? app.toast.alpha : 1;
-    c.fillStyle = 'rgba(15,18,51,0.92)'; R.roundRect(180 - w / 2, b.y + b.h / 2 - 20, w, 40, 12); c.fill();
-    c.strokeStyle = pal.accent; c.lineWidth = 1.5; R.roundRect(180 - w / 2, b.y + b.h / 2 - 20, w, 40, 12); c.stroke();
-    R.text(app.toast.text, 180, b.y + b.h / 2, { size: 15, weight: 700, color: pal.text, align: 'center', maxWidth: w - 20 });
+    c.fillStyle = 'rgba(15,18,51,0.92)'; R.roundRect(180 - w / 2, ty - 20, w, 40, 12); c.fill();
+    c.strokeStyle = pal.accent; c.lineWidth = 1.5; R.roundRect(180 - w / 2, ty - 20, w, 40, 12); c.stroke();
+    R.text(app.toast.text, 180, ty, { size: 15, weight: 700, color: pal.text, align: 'center', maxWidth: w - 20 });
     c.globalAlpha = 1;
   }
 
@@ -179,13 +184,13 @@
   function drawGameOver(app) {
     var info = app.gameOverInfo, pal = P();
     R.drawDim(0.7);
-    var p = { x: 20, y: 72, w: 320, h: Math.min(Layout.L - 110, 470) }; panel(p);
+    var p = { x: 20, y: 72, w: 320, h: Math.min(Layout.L - 110, 352) }; panel(p);
     var title = info.isNewBest ? t('over.newBest') : (info.mode === 'daily' && info.completed ? t('over.dailyDone') : t('over.title'));
     R.text(title, 180, p.y + 36, { size: 24, weight: 900, color: info.isNewBest ? pal.accent : pal.text, align: 'center', maxWidth: 300 });
     if (info.mode === 'daily') R.text(t('daily.number', { n: info.dailyNumber }) + ' · ' + t('over.hands', { n: info.hands, total: info.total }), 180, p.y + 64, { size: 13, weight: 700, color: pal.text2, align: 'center' });
     R.text(t('over.score'), 180, p.y + 92, { size: 13, weight: 700, color: pal.text2, align: 'center' });
     R.text(String(info.score), 180, p.y + 128, { size: 44, weight: 900, color: pal.accent, align: 'center' });
-    R.text(t('over.best') + ' ' + info.best, 180, p.y + 164, { size: 15, weight: 700, color: pal.text, align: 'center' });
+    R.text(t(info.mode === 'daily' ? 'over.bestDaily' : 'over.best') + ' ' + info.best, 180, p.y + 164, { size: 15, weight: 700, color: pal.text, align: 'center' });
     R.text(t('over.bestTilt', { n: info.bestTiltLines }) + '  ·  ' + t('over.bestCombo', { n: info.bestCombo }), 180, p.y + 190, { size: 13, weight: 600, color: pal.text2, align: 'center', maxWidth: 300 });
     var y = p.y + 220;
     button('over.again', { x: p.x + 24, y: y, w: p.w - 48, h: 52 }, t(info.mode === 'daily' && info.completed ? 'daily.practice' : 'over.playAgain'), { primary: true, size: 18 }); y += 62;
@@ -197,7 +202,7 @@
     R.text(t('daily.title'), 180, 60, { size: 30, weight: 900, color: pal.accent, align: 'center' });
     R.text(t('daily.number', { n: d.number }), 180, 96, { size: 18 * ts, weight: 800, color: pal.text, align: 'center' });
     R.text(t('daily.reminder'), 180, 124, { size: 13 * ts, weight: 600, color: pal.text2, align: 'center', maxWidth: 320 });
-    R.text(t('daily.streak', { n: d.streak }) + '  ·  ' + t('daily.bestStreak', { n: d.bestStreak }), 180, 154, { size: 14 * ts, weight: 700, color: pal.text, align: 'center' });
+    R.text((d.streak === 1 ? t('daily.streakOne') : t('daily.streak', { n: d.streak })) + '  ·  ' + t('daily.bestStreak', { n: d.bestStreak }), 180, 154, { size: 14 * ts, weight: 700, color: pal.text, align: 'center' });
     // calendar: last 30 days, 10 per row
     R.text(t('daily.calendar'), 180, 190, { size: 12 * ts, weight: 700, color: pal.text2, align: 'center' });
     var c = R.ctx();
@@ -211,6 +216,10 @@
       R.text(t('over.score') + ' ' + d.score, 180, y2, { size: 18 * ts, weight: 800, color: pal.text, align: 'center' }); y2 += 34;
       button('daily.share', { x: 40, y: y2, w: 280, h: 50 }, t('over.share'), { primary: true }); y2 += 60;
       button('daily.practice', { x: 40, y: y2, w: 280, h: 48 }, t('daily.practice')); y2 += 58;
+    } else if (d.canContinue) {
+      button('daily.continue', { x: 40, y: y2, w: 280, h: 52 }, t('daily.continue'), { primary: true, size: 18 }); y2 += 62;
+    } else if (d.started) {
+      button('daily.practice', { x: 40, y: y2, w: 280, h: 52 }, t('daily.practice'), { primary: true, size: 18 }); y2 += 62;
     } else {
       button('daily.play', { x: 40, y: y2, w: 280, h: 52 }, t('daily.play'), { primary: true, size: 18 }); y2 += 62;
     }
@@ -240,7 +249,7 @@
     var html = '<h1>' + esc(t('help.title')) + '</h1>' + para(t('help.rules')) +
       '<h2>' + esc(t('help.tiltTitle')) + '</h2>' + para(t('help.tiltBody')) +
       '<h2>' + esc(t('help.scoringTitle')) + '</h2>' + para(t('help.scoringBody')) +
-      '<h2>' + esc(t('help.fairTitle')) + '</h2>' + para(t('help.fairBody')) +
+      '<h2>' + esc(t('help.fairTitle')) + '</h2>' + para(t('help.fairBody').replace(/^(Fair play promise: |公平承諾：)/, '')) +
       '<h2>' + esc(t('help.privacyTitle')) + '</h2>' + para(t('help.privacyBody')) +
       '<p><a href="privacy.html" target="_blank" rel="noopener">' + esc(t('settings.privacyPolicy')) + '</a></p>' +
       '<p><button class="close" data-action="tutorial">' + esc(t('settings.replayTutorial')) + '</button></p>';
@@ -273,7 +282,7 @@
     function row(label, val) { return '<div class="row"><span>' + esc(label) + '</span><b>' + esc(val) + '</b></div>'; }
     var html = '<h1>' + esc(t('stats.title')) + '</h1>' +
       row(t('stats.games'), st.games || 0) + row(t('stats.placements'), st.placements || 0) + row(t('stats.tilts'), st.tilts || 0) + row(t('stats.lines'), pr.totalLines || 0) +
-      row(t('stats.bestScore'), pr.bestScore || 0) + row(t('stats.bestTilt'), pr.bestTiltLines || 0) + row(t('stats.bestCombo'), pr.bestCombo || 0) + row(t('stats.allClears'), st.allClears || 0) +
+      row(t('stats.bestScore'), pr.bestScore || 0) + row(t('stats.bestTilt'), pr.bestTiltLines || 0) + row(t('stats.bestCombo'), pr.bestCombo || 0) + row(t('stats.allClears'), pr.allClears || st.allClears || 0) +
       row(t('stats.days'), (pr.playDays || []).length) +
       '<p><button class="close" data-action="copy">' + esc(t('stats.copy')) + '</button> <span id="copy-status"></span></p>';
     openOverlay(html, onAction);

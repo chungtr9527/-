@@ -38,7 +38,8 @@
   function recompute() {
     var ins = L.insets;
     var uw = Math.max(1, L.W - ins.left - ins.right);
-    var uh = Math.max(1, L.H - ins.top - ins.bottom - L.adInset);
+    var gap = L.adInset ? ((TB.Config && TB.Config.ADS && TB.Config.ADS.banner && TB.Config.ADS.banner.gapPx) || 0) : 0;
+    var uh = Math.max(1, L.H - ins.top - ins.bottom - L.adInset - gap);
     L.landscape = uw > uh;
     var lh = TB.Tween.clamp(Math.round(uh / uw * LW), LMIN, LMAX);
     if (L.landscape) lh = LMIN;

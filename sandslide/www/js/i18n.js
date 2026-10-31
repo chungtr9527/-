@@ -37,6 +37,8 @@
     'tilt.banner': 'SANDSLIDE ×{n}!',
     'tilt.allClear': 'Board clear!',
     'tilt.noop': 'Already packed!',
+    'tilt.hintLines': '{g}{n} = that tilt clears {n} lines',
+    'tilt.hintGeneric': 'Arrow numbers = lines that tilt clears · ✓ = a piece will fit',
 
     // --- tutorial ---
     'tut.title': 'How to play',
@@ -45,6 +47,7 @@
     'tut.step3': 'Swipe down!',
     'tut.skip': 'Skip',
     'tut.done': 'That’s it — play!',
+    'tut.dropHint': 'Drop it where the finger shows',
 
     // --- game over / results ---
     'over.title': 'No room left!',
@@ -66,6 +69,7 @@
     'over.rescued': 'Rescued!',
     'over.noThanks': 'No thanks',
     'over.hands': 'Hands {n}/{total}',
+    'over.bestDaily': 'Daily best',
 
     // --- "+1 Tilt" rewarded chip ---
     'chip.outOfEnergy': 'Out of energy ▸ Watch ad for +1 Tilt',
@@ -73,6 +77,7 @@
     'chip.sheetBody': 'Watch a short ad to get 1 Tilt (once per game)',
     'chip.watch': 'Watch ad',
     'chip.gained': '+1 Tilt!',
+    'chip.adNotFinished': 'Ad not finished — no Tilt',
 
     // --- Daily Slide ---
     'daily.title': 'Daily Slide',
@@ -81,9 +86,11 @@
     'daily.practice': 'Practice (not scored)',
     'daily.done': 'Done for today',
     'daily.streak': 'Streak: {n} days',
+    'daily.streakOne': 'Streak: 1 day',
     'daily.bestStreak': 'Best streak: {n}',
     'daily.calendar': 'Last 30 days',
     'daily.play': 'Play today’s',
+    'daily.continue': 'Continue today’s',
     'daily.notToday': 'Past puzzle — practice only',
     'daily.shareText': 'Sandslide Daily #{n} · {score} · {hands}/{total} hands · best tilt {lines} lines\n{url}',
 
@@ -205,6 +212,8 @@
     'tilt.banner': '流沙 ×{n}！',
     'tilt.allClear': '棋盤全清！',
     'tilt.noop': '方塊都靠邊了！',
+    'tilt.hintLines': '{g}{n}＝往那邊翻會消 {n} 條線',
+    'tilt.hintGeneric': '箭頭數字＝往那邊翻會消幾條線 · ✓＝翻完有方塊放得下',
 
     // --- 教學 ---
     'tut.title': '玩法說明',
@@ -213,6 +222,7 @@
     'tut.step3': '往下滑！',
     'tut.skip': '跳過',
     'tut.done': '就這麼簡單，開始吧！',
+    'tut.dropHint': '放到手指指的位置',
 
     // --- 結算 ---
     'over.title': '沒地方放了！',
@@ -234,6 +244,7 @@
     'over.rescued': '救援成功！',
     'over.noThanks': '不用了',
     'over.hands': '手牌 {n}/{total}',
+    'over.bestDaily': '每日最高分',
 
     // --- 「+1 翻轉」獎勵晶片 ---
     'chip.outOfEnergy': '能量用完了 ▸ 看廣告 +1 次翻轉',
@@ -241,6 +252,7 @@
     'chip.sheetBody': '看一段短廣告，獲得 1 次翻轉（每局限一次）',
     'chip.watch': '看廣告',
     'chip.gained': '+1 翻轉！',
+    'chip.adNotFinished': '廣告未看完，未獲得翻轉',
 
     // --- 每日流沙 ---
     'daily.title': '每日流沙',
@@ -249,9 +261,11 @@
     'daily.practice': '不計分練習',
     'daily.done': '今日已完成',
     'daily.streak': '連續 {n} 天',
+    'daily.streakOne': '連續 1 天',
     'daily.bestStreak': '最長連續：{n} 天',
     'daily.calendar': '最近 30 天',
     'daily.play': '挑戰今日',
+    'daily.continue': '繼續今日挑戰',
     'daily.notToday': '之前的題目，只能練習',
     'daily.shareText': '流沙方塊 每日流沙 #{n} · {score} 分 · {hands}/{total} 手 · 最大翻轉 {lines} 線\n{url}',
 

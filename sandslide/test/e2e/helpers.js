@@ -1,17 +1,39 @@
 'use strict';
 const { spawn } = require('child_process');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright');
 const PORT = 4180 + Math.floor(Math.random() * 200);
 const ROOT = path.join(__dirname, '..', '..');
 const SHOTS = path.join(ROOT, 'test-results', 'e2e');
+const SERVER_WAIT_MS = 5000, SERVER_POLL_MS = 100;
 let server = null, browser = null;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// One GET of /index.html: true on a 200, false when the port is not listening yet (or the request stalls). Never rejects.
+function probe(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/index.html' }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+    req.on('error', () => resolve(false));
+    req.setTimeout(1000, () => { req.destroy(); resolve(false); });
+  });
+}
+// Polls the static server until it answers instead of trusting a fixed sleep (a loaded CI runner can take > 500 ms).
+async function waitForServer(port) {
+  const deadline = Date.now() + SERVER_WAIT_MS;
+  for (;;) {
+    if (await probe(port)) return;
+    if (server && (server.exitCode !== null || server.signalCode !== null)) throw new Error(`static server exited early (code ${server.exitCode}, signal ${server.signalCode}) on port ${port}`);
+    if (Date.now() >= deadline) throw new Error(`static server did not answer at http://127.0.0.1:${port}/index.html within ${SERVER_WAIT_MS} ms`);
+    await sleep(SERVER_POLL_MS);
+  }
+}
 
 async function start() {
   fs.mkdirSync(SHOTS, { recursive: true });
   server = spawn(process.execPath, [path.join(ROOT, 'scripts', 'static-server.js'), path.join(ROOT, 'www'), String(PORT)], { stdio: 'ignore' });
-  await new Promise(r => setTimeout(r, 500));
+  await waitForServer(PORT);
   browser = await chromium.launch();
 }
 async function stop() { if (browser) await browser.close(); if (server) server.kill(); }

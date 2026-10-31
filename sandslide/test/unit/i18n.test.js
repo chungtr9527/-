@@ -5,16 +5,18 @@ const TB = require('../helpers/load-engine');
 require('../../www/js/i18n.js');
 const I = TB.I18N;
 
-// Every key the contract (docs/CONTRACTS.md, "TB.I18N") requires.
+// Every key the contract (docs/CONTRACTS.md, "TB.I18N") requires, plus the keys added by the review pass
+// (tut.dropHint, tilt.hintLines, tilt.hintGeneric, chip.adNotFinished, daily.streakOne, daily.continue, over.bestDaily).
 const REQUIRED = `
 menu.play menu.continue menu.newGame menu.daily menu.help menu.settings menu.stats menu.best menu.todayBest menu.abandonConfirm menu.tagline
 hud.score hud.best hud.combo hud.nextTilt hud.max hud.tiltReady hud.pause hud.hand
-tilt.needTilt tilt.noHelp tilt.arrowHint tilt.haveTilt tilt.banner tilt.allClear tilt.noop
-tut.title tut.step1 tut.step2 tut.step3 tut.skip tut.done
+tilt.needTilt tilt.noHelp tilt.arrowHint tilt.haveTilt tilt.banner tilt.allClear tilt.noop tilt.hintLines tilt.hintGeneric
+tut.title tut.step1 tut.step2 tut.step3 tut.skip tut.done tut.dropHint
 over.title over.dailyDone over.score over.best over.newBest over.bestTilt over.bestCombo over.playAgain over.home over.share over.rescueTitle
-over.rescueFree over.rescueAd over.rescueDesc over.noAd over.adNotFinished over.rescued over.noThanks over.hands
-chip.outOfEnergy chip.sheetTitle chip.sheetBody chip.watch chip.gained
+over.rescueFree over.rescueAd over.rescueDesc over.noAd over.adNotFinished over.rescued over.noThanks over.hands over.bestDaily
+chip.outOfEnergy chip.sheetTitle chip.sheetBody chip.watch chip.gained chip.adNotFinished
 daily.title daily.number daily.reminder daily.practice daily.done daily.streak daily.bestStreak daily.calendar daily.play daily.notToday daily.shareText
+daily.streakOne daily.continue
 settings.title settings.sound settings.haptics settings.reducedMotion settings.largeText settings.leftHanded settings.language settings.langAuto
 settings.privacy settings.privacyPolicy settings.replayTutorial settings.version settings.palette settings.locked settings.unlockScore settings.unlockDays
 settings.back settings.on settings.off
@@ -29,7 +31,7 @@ palette.0 palette.1 palette.2 palette.3 palette.4 palette.5 palette.6
 // Placeholders the contract names explicitly.
 const PLACEHOLDERS = {
   'hud.combo': ['n'], 'hud.nextTilt': ['n'], 'hud.hand': ['n', 'total'],
-  'tilt.banner': ['n'],
+  'tilt.banner': ['n'], 'tilt.hintLines': ['g', 'n'],
   'over.bestTilt': ['n'], 'over.bestCombo': ['n'], 'over.hands': ['n', 'total'],
   'daily.number': ['n'], 'daily.streak': ['n'], 'daily.bestStreak': ['n'],
   'daily.shareText': ['n', 'score', 'hands', 'total', 'lines', 'url'],
@@ -42,8 +44,8 @@ const PLACEHOLDERS = {
 const SHORT_ZH = `
 menu.play menu.continue menu.newGame menu.daily menu.help menu.settings menu.stats menu.best menu.todayBest
 hud.score hud.best hud.max hud.tiltReady hud.pause
-tut.skip over.playAgain over.home over.share over.noThanks over.rescueAd over.score over.best over.newBest
-chip.watch chip.gained daily.title daily.play daily.done daily.practice
+tut.skip over.playAgain over.home over.share over.noThanks over.rescueAd over.score over.best over.newBest over.bestDaily
+chip.watch chip.gained daily.title daily.play daily.continue daily.done daily.practice
 settings.title settings.sound settings.haptics settings.reducedMotion settings.largeText settings.leftHanded settings.language settings.langAuto
 settings.privacy settings.privacyPolicy settings.replayTutorial settings.palette settings.locked settings.back settings.on settings.off
 help.title stats.title stats.copy stats.copied
@@ -85,7 +87,7 @@ test('no empty strings, no untranslated leftovers, identical placeholders in bot
     assert.ok(!/\bTilt\b/.test(I.strings['zh-TW'][k]), `zh-TW:${k} still says "Tilt" instead of 翻轉`);
   }
   for (const [k, names] of Object.entries(PLACEHOLDERS)) {
-    assert.deepEqual(placeholdersOf(I.strings.en[k]), names.slice().sort(), `en:${k} placeholders`);
+    assert.deepEqual(Array.from(new Set(placeholdersOf(I.strings.en[k]))), names.slice().sort(), `en:${k} placeholders`);
   }
 });
 
@@ -118,6 +120,30 @@ test('exact contract texts and consistent terminology', () => {
   }
   assert.ok(en['daily.shareText'].includes('\n{url}') && zh['daily.shareText'].includes('\n{url}'));
   assert.ok(/翻轉/.test(zh['help.tiltBody']) && /翻轉/.test(zh['hud.nextTilt']) && /翻轉/.test(zh['chip.gained']));
+});
+
+test('review-pass keys: exact texts in both languages', () => {
+  const en = I.strings.en, zh = I.strings['zh-TW'];
+  assert.equal(en['tut.dropHint'], 'Drop it where the finger shows');
+  assert.equal(zh['tut.dropHint'], '放到手指指的位置');
+  assert.equal(en['chip.adNotFinished'], 'Ad not finished — no Tilt');
+  assert.equal(zh['chip.adNotFinished'], '廣告未看完，未獲得翻轉');
+  assert.equal(en['daily.streakOne'], 'Streak: 1 day');
+  assert.equal(zh['daily.streakOne'], '連續 1 天');
+  assert.equal(en['tilt.hintLines'], '{g}{n} = that tilt clears {n} lines');
+  assert.equal(zh['tilt.hintLines'], '{g}{n}＝往那邊翻會消 {n} 條線');
+  assert.equal(en['tilt.hintGeneric'], 'Arrow numbers = lines that tilt clears · ✓ = a piece will fit');
+  assert.equal(zh['tilt.hintGeneric'], '箭頭數字＝往那邊翻會消幾條線 · ✓＝翻完有方塊放得下');
+  assert.equal(en['daily.continue'], 'Continue today’s');   // same typographic apostrophe as daily.play
+  assert.equal(zh['daily.continue'], '繼續今日挑戰');
+  assert.equal(en['over.bestDaily'], 'Daily best');
+  assert.equal(zh['over.bestDaily'], '每日最高分');
+  // {n} occurs twice in tilt.hintLines: both are filled; {g} is the arrow glyph
+  assert.equal(I.t('tilt.hintLines', { g: '▼', n: 2 }), '▼2 = that tilt clears 2 lines');
+  withLang('zh-TW', () => {
+    assert.equal(I.t('tilt.hintLines', { g: '▲', n: 3 }), '▲3＝往那邊翻會消 3 條線');
+    assert.equal(I.t('daily.streakOne'), '連續 1 天');
+  });
 });
 
 test('t() substitutes placeholders, leaves unknown ones alone and accepts a bare value for {n}', () => {

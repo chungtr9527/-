@@ -58,6 +58,9 @@ Capacitor template; the adaptive icon now points at the `@mipmap/` PNGs).
 4. `node scripts/export-icons.js --android` fixes the tool's two adaptive-icon defects: it re-renders
    `ic_launcher_foreground.png` / `ic_launcher_background.png` at the real 108 dp sizes for every density and rewrites
    both `mipmap-anydpi-v26/*.xml` without the inset. The unit test fails if either fix is missing.
+   The header comment of those XML files deliberately spells the flag as `export-icons.js  - android` (one dash):
+   XML 1.0 forbids the sequence `--` inside a comment and aapt2 refuses to compile a resource that contains one, so
+   never write `--android` (or any other `--`) inside an XML comment under `android/`.
 
 Change the icon → edit the SVG string in `icon.html` → run 2, 3 and 4 → commit `resources/` and `android/`.
 
@@ -96,9 +99,10 @@ Without `KEYSTORE_PATH` the release outputs are unsigned (`app-release-unsigned.
   Node 22 with the npm cache keyed on `sandslide/package-lock.json`, Gradle cache via `setup-java`.
 * Steps: `npm ci` → `npm run flags:dev && npx cap sync android` → `./gradlew assembleDebug --no-daemon --stacktrace`
   → artifact **`sandslide-debug-<commit sha>`** (14-day retention) containing `app-debug.apk`.
-* The first green run is the real verification of the native dependency set (AdMob plugin 8.3.0: Kotlin 2.2.20,
-  `play-services-ads 25.4.+`, `user-messaging-platform 4.0.0`, `io.github.webview-native-ui:engine:1.0.0`). If it fails
-  on dependency resolution, pin `@capacitor-community/admob` to 8.2.0 (plan §10.3) and re-run.
+* The first two runs on GitHub were green, which is the real verification of the native dependency set (AdMob plugin
+  8.3.0: Kotlin 2.2.20, `play-services-ads 25.4.+`, `user-messaging-platform 4.0.0`,
+  `io.github.webview-native-ui:engine:1.0.0`). If a later run fails on dependency resolution, pin
+  `@capacitor-community/admob` to 8.2.0 (plan §10.3) and re-run.
 
 ## 6. Sideloading the debug APK
 
@@ -133,7 +137,7 @@ registered as an AdMob test device, otherwise your own and your testers' taps co
 
 * **Gradle never ran here**: there is no Android SDK and `dl.google.com` is blocked, so `app/build.gradle`, the
   `-P` version properties, the signing blocks and the AdMob plugin's native dependencies are validated only by the
-  first green `sandslide-android-debug` run. `npx cap add android` / `npx cap sync android` and
+  `sandslide-android-debug` workflow (its first two runs on GitHub were green). `npx cap add android` / `npx cap sync android` and
   `@capacitor/assets` were run and are consistent; all edited XML files are well-formed (parsed with `xml-js`).
 * Portrait lock: with targetSdk 36, Android 16 ignores `screenOrientation` on large screens (tablets, unfolded
   foldables); the layout already letterboxes landscape, so this is cosmetic.
