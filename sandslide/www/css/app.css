@@ -15,3 +15,13 @@ body { font-family: system-ui, "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC"
 .overlay h2 { font-size: 18px; margin: 20px 0 8px; }
 .overlay a { color: #FFC857; }
 .overlay .close { position: sticky; top: 0; float: right; min-width: 44px; min-height: 44px; font-size: 18px; background: #1A1F4D; color: #F4F5FA; border: 1px solid #2A3170; border-radius: 10px; }
+/* overlay widgets */
+.overlay .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 17px; }
+.overlay .row input[type=checkbox] { width: 28px; height: 28px; accent-color: #FFC857; }
+.overlay .row select { font-size: 16px; padding: 8px 10px; border-radius: 8px; background: #1A1F4D; color: #F4F5FA; border: 1px solid #2A3170; min-height: 44px; }
+.overlay .pals { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.overlay .pal { min-height: 48px; border-radius: 10px; border: 2px solid #2A3170; background: #1A1F4D; color: #F4F5FA; font-size: 15px; padding: 8px; }
+.overlay .pal.sel { border-color: #FFC857; }
+.overlay .pal:disabled { opacity: 0.55; }
+.overlay .muted { color: #A9AECF; font-size: 13px; }
+.overlay p { margin: 8px 0; }
