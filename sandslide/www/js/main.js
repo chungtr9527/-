@@ -490,9 +490,10 @@
     hitTest: function (lx, ly) {
       var id = UI.hitTest(lx, ly); if (id) return { kind: 'button', id: id };
       if (app.screen !== 'play' || !app.game) return { kind: 'none' };
-      var tr = Layout.rects.tray, reach = Config.INPUT.trayDragReachPx;
+      var tr = Layout.rects.tray, reach = Config.INPUT.trayDragReachPx, ar = Layout.rects.arrows;
+      // the down arrow keeps its whole tap zone even on short layouts where the tray's reach band overlaps it
+      if (Layout.inRect({ x: lx, y: ly }, ar.down)) return { kind: 'arrow', dir: 'down' };
       if (ly >= tr.y - reach && ly < tr.y + tr.h) { var slot = Math.min(2, Math.max(0, Math.floor(lx / 120))); return { kind: 'tray', slot: slot }; }
-      var ar = Layout.rects.arrows;
       for (var i = 0; i < Tilt.DIRS.length; i++) if (Layout.inRect({ x: lx, y: ly }, ar[Tilt.DIRS[i]])) return { kind: 'arrow', dir: Tilt.DIRS[i] };
       if (Layout.inRect({ x: lx, y: ly }, Layout.rects.board)) return { kind: 'board' };
       return { kind: 'none' };

@@ -214,7 +214,14 @@ test('small and landscape viewports keep the board away from the screen edges', 
     const page = await H.open('?tutorial=0&mode=classic&nofx=1', dev);
     const m = await page.api(() => window.__TB.layout.boardEdgeMarginCss());
     assert.ok(m >= 32, dev + ' board edge margin ' + m);
-    await page.shot('10-' + dev);
+    // the whole down-arrow tap zone works even where the tray's drag-reach band overlaps it
+    await page.autoplay(6);
+    await page.api(() => { const s = window.__TB.game().s; s.stored = 1; s.energy = 0; });
+    const ar = await page.api(() => window.__TB.layout.rects.arrows.down);
+    const c = await page.toClient(ar.cx, ar.y + ar.h - 4);
+    await page.mouse.click(c.x, c.y); await page.settle();
+    assert.equal(await page.api(() => window.__TB.state().stored), 0, dev + ': bottom edge of the down arrow tilted');
+    await page.shot('12-' + dev);
     assert.deepEqual(page.errors, []);
     await page.context().close();
   }
