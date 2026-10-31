@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sandslide icon export</title>
+  <style>
+    body { margin: 0; padding: 16px; background: #0F1233; color: #F4F5FA; font: 14px/1.5 system-ui, "PingFang TC", "Noto Sans CJK TC", sans-serif; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    p { color: #A9AECF; max-width: 720px; margin: 0 0 16px; }
+    code { color: #FFC857; }
+    .grid { display: flex; flex-wrap: wrap; gap: 16px; }
+    .card { background: #1A1F4D; border-radius: 12px; padding: 12px; width: 200px; }
+    .card canvas { width: 176px; height: 176px; display: block; border-radius: 8px;
+      background: repeating-conic-gradient(#2A3170 0 25%, #0B0E2B 0 50%) 0 0 / 16px 16px; }
+    .card .name { font-weight: 600; margin: 8px 0 2px; }
+    .card .size { color: #A9AECF; font-size: 12px; }
+    .card a { color: #64CDFF; font-size: 12px; }
+    #status { color: #FF5C5C; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Sandslide icon export</h1>
+  <p>Renders the app icon SVG into PNG canvases at the sizes <code>@capacitor/assets</code> expects.
+    <code>node scripts/export-icons.js</code> drives this page with Playwright and writes <code>resources/*.png</code>;
+    the links below download the same PNGs by hand. <code>window.exportIcon(kind, size?)</code> resolves to a PNG data URL;
+    <code>size</code> overrides the square edge (used for the per-density Android adaptive-icon layers).</p>
+  <div id="status"></div>
+  <div id="previews" class="grid"></div>
+  <script>
+  (function () {
+    'use strict';
+    var BG = '#0F1233';
+    // The app icon, verbatim (see the plan, section 3). Single-quoted attributes so it can live inside a JS string.
+    var ICON_SVG = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><defs><linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#2B2C8F'/><stop offset='1' stop-color='#0B0A2E'/></linearGradient><linearGradient id='bd' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#1C2556'/><stop offset='1' stop-color='#0F1538'/></linearGradient><filter id='glow' x='-40%' y='-80%' width='180%' height='260%'><feGaussianBlur stdDeviation='14'/></filter><filter id='sh' x='-30%' y='-30%' width='160%' height='170%'><feDropShadow dx='0' dy='16' stdDeviation='12' flood-color='#000' flood-opacity='.45'/></filter></defs><rect width='512' height='512' rx='112' fill='url(#bg)'/><g transform='rotate(12 256 256)'><rect x='118' y='118' width='276' height='276' rx='36' fill='url(#bd)' stroke='#3E4CA8' stroke-width='4' filter='url(#sh)'/><g fill='#090C28' opacity='.85'><rect x='132' y='132' width='76' height='76' rx='14'/><rect x='218' y='132' width='76' height='76' rx='14'/><rect x='132' y='218' width='76' height='76' rx='14'/></g><rect x='124' y='296' width='264' height='92' rx='20' fill='#FFC857' opacity='.75' filter='url(#glow)'/><g><rect x='132' y='304' width='76' height='76' rx='14' fill='#FFC857'/><rect x='218' y='304' width='76' height='76' rx='14' fill='#FFC857'/><rect x='304' y='304' width='76' height='76' rx='14' fill='#FFC857'/><rect x='218' y='218' width='76' height='76' rx='14' fill='#64CDFF'/><rect x='304' y='218' width='76' height='76' rx='14' fill='#DC6BA7'/><rect x='304' y='132' width='76' height='76' rx='14' fill='#EE4200'/></g><g fill='#FFF' opacity='.32'><rect x='140' y='310' width='60' height='12' rx='6'/><rect x='226' y='310' width='60' height='12' rx='6'/><rect x='312' y='310' width='60' height='12' rx='6'/><rect x='226' y='224' width='60' height='12' rx='6'/><rect x='312' y='224' width='60' height='12' rx='6'/><rect x='312' y='138' width='60' height='12' rx='6'/></g></g></svg>";
+
+    var VIEWBOX = "viewBox='0 0 512 512'";
+    var BG_RECT = "<rect width='512' height='512' rx='112' fill='url(#bg)'/>";
+    var GROUP_OPEN = "<g transform='rotate(12 256 256)'>";
+    var FG_SCALE = 0.78;   // keeps the tilted board inside the adaptive-icon safe zone (66/108 dp circle)
+    var SPLASH_FRAC = 0.2; // icon width as a fraction of the splash width (same default as @capacitor/assets)
+
+    function must(cond, what) { if (!cond) throw new Error('icon.html: ' + what + ' not found in ICON_SVG'); }
+
+    // The verbatim SVG with an intrinsic size so Chromium rasterises it exactly once at the target size.
+    function fullSvg(size) {
+      must(ICON_SVG.indexOf(VIEWBOX) >= 0, 'viewBox');
+      return ICON_SVG.replace(VIEWBOX, VIEWBOX + " width='" + size + "' height='" + size + "'");
+    }
+
+    // Transparent background; only the tilted-board group, scaled around the centre.
+    function foregroundSvg(size) {
+      must(ICON_SVG.indexOf(BG_RECT) >= 0, 'background rect');
+      must(ICON_SVG.indexOf(GROUP_OPEN) >= 0, 'tilted group');
+      var s = fullSvg(size).replace(BG_RECT, '');
+      var wrap = "<g transform='translate(256 256) scale(" + FG_SCALE + ") translate(-256 -256)'>";
+      s = s.replace(GROUP_OPEN, wrap + GROUP_OPEN);
+      return s.replace(/<\/svg>\s*$/, '</g></svg>');
+    }
+
+    function loadImage(svg) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { reject(new Error('icon.html: the SVG failed to load')); };
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      });
+    }
+
+    function fill(ctx, w, h) { ctx.fillStyle = BG; ctx.fillRect(0, 0, w, h); }
+
+    function drawSplash(ctx, w, h) {
+      fill(ctx, w, h);
+      var size = Math.round(w * SPLASH_FRAC);
+      return loadImage(fullSvg(size)).then(function (img) {
+        ctx.drawImage(img, Math.round((w - size) / 2), Math.round((h - size) / 2), size, size);
+      });
+    }
+
+    var KINDS = {
+      'icon-only': { w: 1024, h: 1024, draw: function (ctx, w, h) {
+        return loadImage(fullSvg(w)).then(function (img) { ctx.drawImage(img, 0, 0, w, h); });
+      } },
+      'icon-foreground': { w: 1024, h: 1024, draw: function (ctx, w, h) {
+        return loadImage(foregroundSvg(w)).then(function (img) { ctx.drawImage(img, 0, 0, w, h); });
+      } },
+      'icon-background': { w: 1024, h: 1024, draw: function (ctx, w, h) { fill(ctx, w, h); return Promise.resolve(); } },
+      'splash': { w: 2732, h: 2732, draw: drawSplash },
+      'splash-dark': { w: 2732, h: 2732, draw: drawSplash }
+    };
+
+    // size (optional, px): render the kind as a size x size square instead of its default dimensions.
+    function render(kind, size) {
+      var spec = KINDS[kind];
+      if (!spec) return Promise.reject(new Error('icon.html: unknown kind "' + kind + '"'));
+      var w = spec.w, h = spec.h;
+      if (size !== undefined && size !== null) {
+        size = Math.round(Number(size));
+        if (!(size > 0)) return Promise.reject(new Error('icon.html: bad size "' + size + '"'));
+        w = h = size;
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext('2d');
+      return spec.draw(ctx, w, h).then(function () { return canvas; });
+    }
+
+    // Public API for scripts/export-icons.js: Promise<string> (a PNG data URL).
+    window.exportIcon = function (kind, size) { return render(kind, size).then(function (c) { return c.toDataURL('image/png'); }); };
+    window.ICON_KINDS = Object.keys(KINDS);
+    window.ICON_SVG = ICON_SVG;
+
+    // Human preview: one card per kind with a download link.
+    function preview() {
+      var grid = document.getElementById('previews');
+      var status = document.getElementById('status');
+      window.ICON_KINDS.forEach(function (kind) {
+        render(kind).then(function (canvas) {
+          var card = document.createElement('div');
+          card.className = 'card';
+          card.appendChild(canvas);
+          var name = document.createElement('div'); name.className = 'name'; name.textContent = kind + '.png'; card.appendChild(name);
+          var size = document.createElement('div'); size.className = 'size'; size.textContent = canvas.width + ' x ' + canvas.height; card.appendChild(size);
+          var a = document.createElement('a'); a.textContent = 'Download'; a.href = '#'; a.download = kind + '.png';
+          a.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            window.exportIcon(kind).then(function (url) {
+              var tmp = document.createElement('a'); tmp.href = url; tmp.download = kind + '.png';
+              document.body.appendChild(tmp); tmp.click(); document.body.removeChild(tmp);
+            });
+          });
+          card.appendChild(a);
+          grid.appendChild(card);
+        }).catch(function (e) { status.textContent += (e && e.message ? e.message : String(e)) + '\n'; });
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', preview); else preview();
+  })();
+  </script>
+</body>
+</html>

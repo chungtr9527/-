@@ -122,7 +122,7 @@ test('resume: a saved game continues after reload', async () => {
   await page.autoplay(8);
   const before = await page.api(() => window.__TB.state());
   await page.api(() => TB.Storage.flush());
-  await page.reload({ waitUntil: 'load' });
+  await page.goto(page.url().replace(/\?.*$/, '') + '?tutorial=0&nofx=1', { waitUntil: 'load' });
   await page.waitForFunction(() => window.__TB && window.__TB.screen() === 'menu', null, { timeout: 10000 });
   assert.equal(await page.api(() => window.__TB.app.hasSave), true);
   await page.api(() => window.__TB.button('menu.continue'));

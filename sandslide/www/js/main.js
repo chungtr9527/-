@@ -68,6 +68,7 @@
     relayout();
     initAds();
     app.hasSave = !!(Storage && Storage.get('save'));
+    consumePendingReward();
     if (app.debug) installDebugApi();
     if (app.debug && app.query.nofx) app.instantFx = true;
     if (app.debug && app.query.lang) { app.settings.lang = app.query.lang; applyLanguage(); }
@@ -123,6 +124,14 @@
       privacyOptionsRequired: function () { return true; }, openPrivacyOptions: function () { toast('[privacy options]'); return Promise.resolve(); },
       notifySessionStart: function () {}, notifyGameStart: function () {}, notifyGameOver: function () {}, ids: function () { return {}; } };
   }
+  // A reward earned right before the process was killed: apply it now (rescue -> next rescue is free; tilt -> +1 on the saved game).
+  function consumePendingReward() {
+    var pr = has(Ads, 'consumePendingReward') ? Ads.consumePendingReward() : null;
+    if (!pr) return;
+    if (pr.kind === 'rescue') { app.profile.freeRescueUsed = false; saveDoc('profile', app.profile); }
+    else if (pr.kind === 'tilt') { var save = Storage && Storage.get('save'); var gm = save ? Game.restore(save) : null; if (gm && !gm.isOver()) { gm.s.extraTiltsUsed = Math.max(0, gm.s.extraTiltsUsed - 1); gm.addTilt(); saveDoc('save', gm.serialize()); } }
+  }
+  function maybeShowBanner() { if (app.profile.bannerUnlocked && !app.firstEverGame && g.innerHeight >= Config.ADS.banner.minViewportHeight) call(Ads, 'showBanner'); }
   function rewardedReady(kind) { return !!(Ads && has(Ads, 'isRewardedReady') && Ads.isRewardedReady(kind)); }
 
   // ---------- render loop ----------
@@ -234,7 +243,7 @@
     app.firstEverGame = app.profile.gameOvers === 0;
     call(Ads, 'notifyGameStart', app.game.s.mode);
     call(Stats, 'record', 'game_start', { mode: app.game.s.mode });
-    if (app.profile.bannerUnlocked && !app.firstEverGame) call(Ads, 'showBanner');
+    maybeShowBanner();
     updateChip(); autosave(); refreshStuck(); requestFrame();
   }
   function refreshStuck() {
@@ -349,7 +358,7 @@
     var info = app.gameOverInfo; app.screen = 'gameover';
     if (info.isNewBest) { call(Audio, 'play', 'newBest'); call(Haptics, 'success'); if (!R.isReduced()) Particles.confetti(180, 120, 120); UI.announce(t('a11y.newBest')); }
     if (info.unlocked && info.unlocked.length) toast(t('settings.palette') + ': ' + info.unlocked.map(function (i) { return t('palette.' + i); }).join(', '), 2500);
-    if (app.profile.bannerUnlocked) call(Ads, 'showBanner');
+    app.firstEverGame = false; maybeShowBanner();
     requestFrame();
   }
   function checkUnlocks() {
@@ -525,6 +534,7 @@
       var key = el.getAttribute('data-setting');
       if (key === 'lang') app.settings.lang = el.value; else app.settings[key] = !!el.checked;
       saveDoc('settings', app.settings); applyLanguage(); applySettings();
+      if (key === 'sound' && el.checked) call(Audio, 'unlock');
       if (key === 'lang') UI.openSettings(app, overlayAction);
       if (app.tutorial) app.tutorial.hint = t(TUT_STEPS[app.tutorial.step] ? TUT_STEPS[app.tutorial.step].hint : 'tut.done');
       requestFrame();

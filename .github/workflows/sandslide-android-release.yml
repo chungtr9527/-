@@ -39,10 +39,15 @@ jobs:
         run: npm run flags:release
       - name: Gate - no test ids or placeholders in the web build or strings
         run: |
-          if grep -rEl '3940256099942544|REPLACE' www/js android/app/src/main/res/values/strings.xml; then
-            echo "::error::test ad ids or REPLACE placeholders found in the release sources"; exit 1; fi
-          node -e "const f=require('./www/js/build-flags.js');" || true
-          grep -q "\"env\":\"prod\"" www/js/build-flags.js
+          if grep -rl '3940256099942544' www/js; then echo "::error::Google test ad ids found in www/js after flags:release"; exit 1; fi
+          node -e "
+            require('./www/js/build-flags.js'); require('./www/js/ads-ids.prod.js');
+            const TB = globalThis.TB; if (TB.flags.env !== 'prod') { console.error('build flags are not prod'); process.exit(1); }
+            const a = TB.ADS_IDS_PROD.android; for (const k of ['banner','interstitial','rwRescue','rwTilt']) { if (!a[k] || /REPLACE/.test(a[k])) { console.error('ads-ids.prod.js android.' + k + ' is a placeholder'); process.exit(1); } }
+            const xml = require('fs').readFileSync('android/app/src/main/res/values/strings.xml', 'utf8');
+            const m = xml.match(/name=\"admob_app_id\">([^<]+)</); if (!m || /REPLACE/.test(m[1])) { console.error('strings.xml admob_app_id is a placeholder'); process.exit(1); }
+            console.log('release id gate passed');
+          "
       - run: npx cap sync android
       - name: Decode upload keystore
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
